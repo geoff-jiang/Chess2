@@ -416,7 +416,7 @@ function togglePreview(mode: GeometryMode): void {
     try { standardPosition(displayPosition(gameState, mode), ARENA); }
     catch { showToast("Return kings and unpromoted pawns to valid anchor squares before previewing flat chess."); return; }
   }
-  previewMode = previewMode === mode || (!previewMode && gameState.mode === mode) ? null : mode;
+  previewMode = mode === gameState.mode || previewMode === mode ? null : mode;
   render();
 }
 
