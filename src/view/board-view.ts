@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { isInCheck, isShadow, type GameState, type GeometryMode, type MoveOption, type Piece } from "../shared/game.ts";
-import { ARENA, edgeMidpoint, squareCoordinates, type HyperbolicTile, type SquareId, type Vector3 } from "../shared/geometry.ts";
+import { ARENA, edgeMidpoint, sharedVertex, squareCoordinates, type HyperbolicTile, type SquareId, type Vector3 } from "../shared/geometry.ts";
 import { pieceLetter } from "../shared/labels.ts";
 import { displayNormal, toDisplayPoint } from "./hyperbolic-display.ts";
 
@@ -60,8 +60,8 @@ export class BoardView {
 
   constructor(container: HTMLElement, onTilePicked: (tileId: string, pieceId: string | null) => void) {
     this.onTilePicked = onTilePicked;
-    this.scene.background = new THREE.Color("#dce4e4");
-    this.scene.fog = new THREE.Fog("#dce4e4", 150, 650);
+    this.scene.background = new THREE.Color("#efe6c4");
+    this.scene.fog = new THREE.Fog("#efe6c4", 150, 650);
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.08, 2000);
     this.camera.position.set(0, 12, 17);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
@@ -155,23 +155,23 @@ export class BoardView {
     const direction = mode === "hyperbolic"
       ? wholeArena ? new THREE.Vector3(0, 0.97, 0.25).normalize() : new THREE.Vector3(0, 0.72, 0.69).normalize()
       : new THREE.Vector3(0, 12, 17).normalize();
-    const distance = mode === "hyperbolic" ? wholeArena ? 28 : 26 : 20.8;
+    const distance = mode === "hyperbolic" ? wholeArena ? 44 : 40 : 20.8;
     this.camera.position.copy(direction.multiplyScalar(distance));
     this.controls.update();
   }
 
   private addLighting(): void {
-    this.scene.add(new THREE.HemisphereLight("#f7faf2", "#627984", 2.25));
-    const key = new THREE.DirectionalLight("#fff5e8", 2.1);
+    this.scene.add(new THREE.HemisphereLight("#f8f3e2", "#6d7a62", 2.1));
+    const key = new THREE.DirectionalLight("#fff6e4", 2.15);
     key.position.set(-7, 17, 9);
     this.scene.add(key);
-    const fill = new THREE.DirectionalLight("#9ccac7", 0.7);
+    const fill = new THREE.DirectionalLight("#efe0c0", 0.42);
     fill.position.set(10, 6, -8);
     this.scene.add(fill);
 
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(66, 96),
-      new THREE.MeshStandardMaterial({ color: "#dce4e4", roughness: 0.98, metalness: 0 }),
+      new THREE.MeshStandardMaterial({ color: "#efe6c4", roughness: 0.98, metalness: 0 }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.56;
@@ -185,7 +185,7 @@ export class BoardView {
       const flat = square ? flatTile(square) : flatTrayTile(tile.id);
       const hyper = hyperbolicTile(tile);
       const flatGrid = radialGrid(flat.center, flat.boundary);
-      const color = square ? anchorColor(square) : "#70858a";
+      const color = baseColor(tile.id);
       const material = new THREE.MeshStandardMaterial({
         color,
         emissive: "#000000",
@@ -200,7 +200,8 @@ export class BoardView {
       this.tileLayer.add(mesh);
 
       const rimGeometry = new THREE.BufferGeometry().setFromPoints(flat.boundary);
-      const rimMaterial = new THREE.LineBasicMaterial({ color: square ? "#526f76" : "#3a5864", transparent: true, opacity: square ? 0.43 : 0.56 });
+      const edge = rimStyle(tile.id);
+      const rimMaterial = new THREE.LineBasicMaterial({ color: edge.color, transparent: true, opacity: edge.opacity });
       const rim = new THREE.LineLoop(rimGeometry, rimMaterial);
       rim.visible = square !== undefined;
       this.tileLayer.add(rim);
@@ -221,6 +222,7 @@ export class BoardView {
         label,
       });
     }
+    this.updateTilePositions();
   }
 
   private makeTileLabel(square: SquareId): THREE.Sprite {
@@ -231,12 +233,12 @@ export class BoardView {
     if (!context) throw new Error("Canvas text labels are unavailable.");
     context.beginPath();
     roundedRect(context, 13, 27, 102, 74, 20);
-    context.fillStyle = "rgba(28, 52, 64, 0.82)";
+    context.fillStyle = "rgba(26, 35, 48, 0.82)";
     context.fill();
-    context.strokeStyle = "rgba(239, 242, 229, .3)";
+    context.strokeStyle = "rgba(247, 241, 230, .34)";
     context.lineWidth = 2;
     context.stroke();
-    context.fillStyle = "#f2f1e7";
+    context.fillStyle = "#f7f1e6";
     context.font = "600 34px Avenir Next, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
@@ -262,12 +264,13 @@ export class BoardView {
       const isRoute = routeTiles.has(tileId) && !isSelected && !isDestination;
       const isThreatenedKing = activeKing?.tileId === tileId && kingThreatened;
       const isTutorialTarget = tileId === this.tutorialTileId;
-      const color = isThreatenedKing ? "#c85c47" : isSelected ? "#d69a52" : isDestination ? "#d27d4d" : isRoute ? "#477b7c" : isTutorialTarget ? "#75c8c2" : null;
+      const color = isThreatenedKing ? "#c85c47" : isSelected ? "#e2b15a" : isDestination ? "#d4a24a" : isRoute ? "#2f6b52" : isTutorialTarget ? "#7dcea0" : null;
       visual.mesh.material.color.set(color ?? baseColor(tileId));
       visual.mesh.material.emissive.set(color ?? "#000000");
       visual.mesh.material.emissiveIntensity = isSelected ? 0.28 : isDestination ? 0.17 : isRoute ? 0.08 : isThreatenedKing || isTutorialTarget ? 0.18 : 0;
-      visual.rim.material.color.set(isDestination ? "#efaa74" : isRoute || isTutorialTarget ? "#8ed1c7" : "#526f76");
-      visual.rim.material.opacity = isDestination ? 0.96 : isRoute || isTutorialTarget ? 0.8 : 0.43;
+      const rim = rimStyle(tileId);
+      visual.rim.material.color.set(isDestination ? "#f0d48a" : isRoute || isTutorialTarget ? "#b7d7c4" : rim.color);
+      visual.rim.material.opacity = isDestination ? 0.96 : isRoute || isTutorialTarget ? 0.8 : rim.opacity;
     }
   }
 
@@ -285,8 +288,8 @@ export class BoardView {
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
       const active = move.toTileId === hoveredTarget;
       const material = this.renderMode === "hyperbolic"
-        ? new THREE.LineDashedMaterial({ color: active ? "#be613a" : "#527f80", dashSize: active ? 0.27 : 0.18, gapSize: active ? 0.12 : 0.22, transparent: true, opacity: active ? 0.95 : 0.55, linewidth: active ? 2 : 1 })
-        : new THREE.LineBasicMaterial({ color: active ? "#be613a" : "#527f80", transparent: true, opacity: active ? 0.87 : 0.48, linewidth: active ? 2 : 1 });
+        ? new THREE.LineDashedMaterial({ color: active ? "#c9843a" : "#2a6b56", dashSize: active ? 0.27 : 0.18, gapSize: active ? 0.12 : 0.22, transparent: true, opacity: active ? 0.95 : 0.55, linewidth: active ? 2 : 1 })
+        : new THREE.LineBasicMaterial({ color: active ? "#c9843a" : "#2a6b56", transparent: true, opacity: active ? 0.87 : 0.48, linewidth: active ? 2 : 1 });
       const line = this.renderMode === "hyperbolic" ? new THREE.Line(geometry, material) : new THREE.Line(geometry, material);
       if (line.material instanceof THREE.LineDashedMaterial) line.computeLineDistances();
       this.routeLayer.add(line);
@@ -295,7 +298,7 @@ export class BoardView {
       if (destination) {
         const marker = new THREE.Mesh(
           new THREE.SphereGeometry(0.105, 12, 10),
-          new THREE.MeshBasicMaterial({ color: "#dd8457", transparent: true, opacity: 0.92 }),
+          new THREE.MeshBasicMaterial({ color: "#e2b15a", transparent: true, opacity: 0.92 }),
         );
         marker.position.copy(this.getTilePosition(destination)).addScaledVector(this.getTileNormal(destination), 0.22);
         marker.scale.setScalar(localScale(destination, this.renderMode) * 0.75);
@@ -322,8 +325,15 @@ export class BoardView {
       const normal = this.getTileNormal(visual);
       const scale = localScale(visual, this.renderMode);
       let group = this.pieceAssets.get(piece.id);
+      if (group && group.userData.pieceType !== piece.type) {
+        this.pieceLayer.remove(group);
+        this.pieceAssets.delete(piece.id);
+        disposeObject(group);
+        group = undefined;
+      }
       if (!group) {
         group = this.makePiece(piece);
+        group.userData.pieceType = piece.type;
         this.pieceAssets.set(piece.id, group);
       }
       group.scale.setScalar(scale);
@@ -339,10 +349,14 @@ export class BoardView {
   private makePiece(piece: Piece): THREE.Group {
     const group = new THREE.Group();
     const isWhite = piece.side === "white";
-    const mainColor = isWhite ? "#e8e2d5" : "#263f51";
-    const edgeColor = isWhite ? "#81979a" : "#8cc4bb";
-    const material = new THREE.MeshStandardMaterial({ color: mainColor, roughness: 0.39, metalness: 0.22, flatShading: true });
-    const trim = new THREE.MeshStandardMaterial({ color: edgeColor, roughness: 0.36, metalness: 0.42 });
+    const mainColor = isWhite ? "#f8f6ef" : "#1a2330";
+    const material = new THREE.MeshStandardMaterial({
+      color: mainColor,
+      roughness: isWhite ? 0.46 : 0.4,
+      metalness: isWhite ? 0.06 : 0.18,
+      flatShading: true,
+    });
+    const trim = new THREE.MeshStandardMaterial({ color: "#c4a574", roughness: 0.32, metalness: 0.55 });
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.12, 10), trim);
     base.position.y = 0.07;
     group.add(base);
@@ -372,6 +386,29 @@ export class BoardView {
       body.scale.y = 1.27;
       body.position.y = 0.39;
       group.add(body);
+    } else if (piece.type === "bishop") {
+      body = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.58, 8), material);
+      body.position.y = 0.4;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), material);
+      head.position.y = 0.68;
+      const slit = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.16, 0.16), trim);
+      slit.position.y = 0.7;
+      group.add(body, head, slit);
+    } else if (piece.type === "queen") {
+      body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 0.5, 8), material);
+      body.position.y = 0.38;
+      const collar = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.035, 6, 10), trim);
+      collar.rotation.x = Math.PI / 2;
+      collar.position.y = 0.62;
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), material);
+      crown.position.y = 0.74;
+      group.add(body, collar, crown);
+    } else if (piece.type === "pawn") {
+      body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), material);
+      body.position.y = 0.28;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.15, 0.14, 8), trim);
+      neck.position.y = 0.16;
+      group.add(body, neck);
     } else {
       body = new THREE.Mesh(new THREE.ConeGeometry(0.29, 0.49, 4, 1), material);
       body.rotation.y = Math.PI / 4;
@@ -382,7 +419,7 @@ export class BoardView {
       group.add(body, band);
     }
     const tag = this.makePieceLabel(piece.type, isWhite);
-    tag.position.y = piece.type === "king" ? 0.91 : 0.8;
+    tag.position.y = piece.type === "queen" ? 1.02 : piece.type === "bishop" ? 1.02 : piece.type === "king" ? 0.91 : piece.type === "pawn" ? 0.52 : 0.8;
     group.add(tag);
     for (const child of group.children) {
       child.userData.pieceId = piece.id;
@@ -399,12 +436,12 @@ export class BoardView {
     if (!context) throw new Error("Canvas piece labels are unavailable.");
     context.beginPath();
     context.arc(48, 48, 39, 0, Math.PI * 2);
-    context.fillStyle = isWhite ? "#273f4b" : "#e3e8de";
+    context.fillStyle = isWhite ? "#1a2330" : "#f4e6b2";
     context.fill();
-    context.strokeStyle = isWhite ? "#e3e8de" : "#425867";
+    context.strokeStyle = "#c4a574";
     context.lineWidth = 3;
     context.stroke();
-    context.fillStyle = isWhite ? "#f2eee3" : "#203b4b";
+    context.fillStyle = isWhite ? "#f8f6ef" : "#1a2330";
     context.font = "700 48px Avenir Next, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
@@ -474,8 +511,16 @@ export class BoardView {
       visual.rim.visible = visual.mesh.visible;
       if (visual.label) {
         visual.label.visible = this.renderMode === "hyperbolic" || isAnchor;
-        visual.label.position.copy(center).addScaledVector(toNormal, 0.03);
-        visual.label.scale.setScalar(0.49 * (this.renderMode === "hyperbolic" ? Math.min(localScale(visual, "hyperbolic"), 3.2) : 1));
+        const curvedFactor = Math.min(localScale(visual, "hyperbolic"), 3.2);
+        const towardCurved = this.renderMode === "hyperbolic" ? progress : 1 - progress;
+        const labelScale = 0.49 * THREE.MathUtils.lerp(1, curvedFactor, towardCurved);
+        // Outer tiles tilt up toward the camera, so the same lift that clears a
+        // flat square still lets the near rim cover the badge.
+        const slope = Math.hypot(normal.x, normal.z);
+        const curvedLift = Math.max(0.62, labelScale * 0.7) + slope * 1.15;
+        const lift = THREE.MathUtils.lerp(0.36, curvedLift, towardCurved);
+        visual.label.position.copy(center).addScaledVector(normal, lift);
+        visual.label.scale.setScalar(labelScale);
       }
     }
     this.rebuildPieces();
@@ -642,8 +687,11 @@ function routeDisplayPoints(route: string[], mode: GeometryMode): THREE.Vector3[
       const link = current.neighbors.find((candidate) => candidate?.tileId === nextId);
       const nextTile = ARENA.tiles.get(nextId);
       if (link && nextTile) {
-        const midpoint = edgeMidpoint(current.vertices, link.edgeIndex);
+        const midpoint = edgeMidpoint(current.vertices, current.neighbors.indexOf(link));
         result.push(toDisplayPoint(midpoint));
+      } else if (nextTile) {
+        const corner = sharedVertex(current, nextTile);
+        if (corner) result.push(toDisplayPoint(corner));
       }
     }
     result.push(tileCenter(nextId, mode) ?? visualCenter);
@@ -677,18 +725,40 @@ function geodesicPoint(first: Vector3, second: Vector3, progress: number): Vecto
 
 function localScale(visual: TileVisual, mode: GeometryMode): number {
   if (mode === "flat") return 1;
-  const radius = visual.hyperBoundary.reduce((total, point) => total + point.distanceTo(visual.hyperCenter), 0) / EDGE_POINTS;
-  return THREE.MathUtils.clamp(radius / 0.72, 0.82, 18);
+  const footprint = visual.hyperBoundary.reduce((total, point) => total + point.distanceTo(visual.hyperCenter), 0) / EDGE_POINTS;
+  const tile = ARENA.tiles.get(visual.mesh.userData.tileId as string);
+  let nearest = Infinity;
+  if (tile) {
+    for (const link of tile.neighbors) {
+      if (!link) continue;
+      const neighbor = ARENA.tiles.get(link.tileId);
+      if (!neighbor) continue;
+      nearest = Math.min(nearest, visual.hyperCenter.distanceTo(toDisplayPoint(neighbor.center)));
+    }
+  }
+  // Fill the tile, but keep about the same margin a flat piece has on its square.
+  const fromTile = footprint / 0.62;
+  const fromNeighbors = Number.isFinite(nearest) ? nearest * 0.88 : fromTile;
+  return THREE.MathUtils.clamp(Math.min(fromTile, fromNeighbors), 0.55, 5);
 }
 
 function baseColor(tileId: string): string {
   const square = ARENA.flatSquareByTile.get(tileId);
-  return square ? anchorColor(square) : "#71888d";
+  return square ? anchorColor(square) : "#c48b72";
 }
 
 function anchorColor(square: SquareId): string {
   const { row, col } = squareCoordinates(square);
-  return (row + col) % 2 === 0 ? "#bac9c3" : "#71888b";
+  return (row + col) % 2 === 0 ? "#f4e6b2" : "#1a5c4a";
+}
+
+function rimStyle(tileId: string): { color: string; opacity: number } {
+  const square = ARENA.flatSquareByTile.get(tileId);
+  if (!square) return { color: "#9a6552", opacity: 0.78 };
+  const { row, col } = squareCoordinates(square);
+  return (row + col) % 2 === 0
+    ? { color: "#d4c48a", opacity: 0.75 }
+    : { color: "#0e3d32", opacity: 0.82 };
 }
 
 function writeVector(target: Float32Array, index: number, vector: THREE.Vector3): void {

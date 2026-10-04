@@ -1,6 +1,6 @@
-# Curvature Chess
+# Chess Without Borders
 
-Curvature Chess is a two-player browser game on two linked boards: a familiar 8×8 grid and a finite patch of the regular hyperbolic `{4,5}` tiling.
+Chess Without Borders is a two-player browser game on two linked boards: a familiar 8×8 grid and a finite patch of the regular hyperbolic `{4,5}` tiling.
 
 ## Run it
 
@@ -27,18 +27,18 @@ Open the Vite URL printed by `npm run dev`. For a production build, `npm start` 
 - Drag to orbit, right-drag to pan, and use the wheel or a pinch gesture to zoom. **Reset view** restores that browser's camera. Camera state is never sent to the server.
 - Select a piece to reveal its available destinations and routes. Select a destination to move.
 - Choose the other geometry to preview it locally. **Commit** spends the current turn and changes the shared board.
-- A geometry shift starts a two-piece-move lock. After each player has made one piece move, another shift is available.
+- Each player can shift 3 times. A geometry shift starts a two-piece-move lock. After each player has made one piece move, another shift is available if that player has any left.
 - Capturing the other king wins. Three visits to the same full position draw. The finish panel offers a rematch; online, both players must request one.
 
 ## Rules in this version
 
-Each side begins with a king, rook, knight, and guard. The mirrored flat starting squares are White `e1`, `a1`, `b1`, `d2` and Black `d8`, `h8`, `g8`, `e7` respectively.
+Each side begins with a king, a queen, two rooks, two bishops, two knights, and eight pawns. The armies mirror each other under a half-turn. White's back rank, from `a1` to `h1`, is rook, bishop, knight, bishop, rook, king, knight, queen, with pawns on the second rank. Black's king is on `c8` and queen on `a8`. That order keeps a geometry shift from capturing the king; the usual `e1` king and `d1` queen do not, because those anchors meet the far camp.
 
-In flat mode, only the 64 anchor tiles are active. Kings move one square in any direction, rooks move orthogonally, knights use the familiar two-plus-one jump, and guards move one orthogonal square. An extra-tile piece becomes a shadow: its original tile and piece are preserved, but it is hidden from the flat board and cannot move, capture, block, or be captured there.
+In flat mode, only the 64 anchor tiles are active. Kings, rooks, bishops, queens, and knights use their familiar square-grid moves. Pawns step one square forward, or two from their starting square, and capture one square diagonally forward. A pawn that reaches the last rank promotes to a queen. An extra-tile piece becomes a shadow: its original tile and piece are preserved, but it is hidden from the flat board and cannot move, capture, block, or be captured there.
 
-In hyperbolic mode, rooks follow tile-center rays and continue through the opposite edge of each square; their route stops at the first piece or arena boundary. Knights move two steps along one such ray, then one edge to either side, jumping over intervening pieces. Kings may land on anchor tiles sharing an edge or corner. Guards move to an edge-neighbor. Captures happen only on the destination tile.
+In hyperbolic mode, rooks follow tile-center rays and continue through the opposite edge of each square; their route stops at the first piece or arena boundary. Bishops step to a tile that shares a corner but not an edge, then leave through the opposite corner of each square on the same side. The queen combines those two rays. Knights move two steps along one rook ray, then one edge to either side, jumping over intervening pieces. Kings may land on anchor tiles sharing an edge or corner. A pawn has one forward step: the empty edge-neighbor with the greatest rank gain. It captures an enemy on a higher-rank corner beside that step. Rank is the chess rank of an anchor, or the average rank of the nearest anchors for any other tile. White advances toward rank 8 and Black toward rank 1. Captures happen only on the destination tile.
 
-King threats are displayed, but a player may leave a king threatened; this first version has no checkmate, castling, en passant, pawns, bishops, or promotion. Capturing the king is the win condition.
+King threats are displayed, but a player may leave a king threatened. There is no checkmate, castling, or en passant. Capturing the king is the win condition.
 
 ## Geometry and anchors
 

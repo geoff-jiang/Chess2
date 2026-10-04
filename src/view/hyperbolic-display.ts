@@ -1,11 +1,15 @@
 import * as THREE from "three";
 import type { Vector3 } from "../shared/geometry.ts";
 
-const DISPLAY_RADIUS = 8;
-const RADIAL_SOFTNESS = 2.5;
-const HEIGHT_PER_SQUARED_DISPLAY_UNIT = 0.035;
+const DISPLAY_RADIUS = 17;
+const RADIAL_SOFTNESS = 4.8;
+const HEIGHT_PER_SQUARED_DISPLAY_UNIT = 0.011;
 
-/** Compress hyperboloid distance for display; the rules still use model coordinates. */
+/**
+ * Compress hyperboloid distance for display. The softness stays high enough that
+ * the outer rings keep their size instead of stacking into a thin rim.
+ * The rules still use model coordinates.
+ */
 export function toDisplayPoint(point: Vector3): THREE.Vector3 {
   const modelRadius = Math.hypot(point.x, point.y);
   if (modelRadius < 1e-12) return new THREE.Vector3(0, 0, 0);

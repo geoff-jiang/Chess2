@@ -1,5 +1,5 @@
 import "./styles.css";
-import { applyAction, createInitialState, getLegalMoves, isInCheck, isShadow, oppositeSide, type GameAction, type GameState, type GeometryMode, type HistoryItem, type Piece, type Side } from "./shared/game.ts";
+import { applyAction, createInitialState, getLegalMoves, isInCheck, isShadow, oppositeSide, SHIFTS_PER_PLAYER, type GameAction, type GameState, type GeometryMode, type HistoryItem, type Piece, type Side } from "./shared/game.ts";
 import { ARENA } from "./shared/geometry.ts";
 import { capitalize, pieceLetter } from "./shared/labels.ts";
 import { BoardView } from "./view/board-view.ts";
@@ -27,9 +27,9 @@ if (!app) throw new Error("The app root is missing.");
 app.innerHTML = `
   <div class="app-frame">
     <header class="topbar">
-      <div class="brand" aria-label="Curvature Chess">
+      <div class="brand" aria-label="Chess Without Borders">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span><span class="brand-name">Curvature Chess</span><span class="brand-caption">A game across geometries</span></span>
+        <span><span class="brand-name">Chess Without Borders</span><span class="brand-caption">A game across geometries</span></span>
       </div>
       <div class="topbar-note"><span class="spark" aria-hidden="true">✳</span> Change the board. Find a new route.</div>
     </header>
@@ -47,20 +47,77 @@ app.innerHTML = `
       </section>
       <aside class="side-panel">
         <section id="lobby-panel" class="lobby-panel">
-          <div class="lobby-kicker">A two-player strategy game</div>
           <h1 class="lobby-title">Two geometries.<br>One shared board.</h1>
-          <p class="lobby-copy">Pieces travel by the shape of the board. Shift the surface, and familiar routes lead somewhere new.</p>
-          <button id="create-room" class="primary-button" type="button"><span aria-hidden="true">＋</span> Create a private room</button>
-          <div class="join-divider">or join a player</div>
-          <form id="join-form" class="join-row">
-            <label class="visually-hidden" for="room-code">Six-character room code</label>
-            <input id="room-code" class="room-code-input" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Enter room code" aria-describedby="form-error" />
-            <button class="secondary-button" type="submit">Join</button>
-          </form>
-          <p id="form-error" class="form-error" role="status"></p>
-          <button id="local-game" class="local-link" type="button">Try a local match on this device</button>
-          <button id="guided-opening" class="local-link guided-start" type="button">Try the guided opening · 2 minutes</button>
-          <div class="lobby-note">No account needed. Share a room link with one other player to begin.</div>
+          <div class="lobby-kicker">A two-player strategy game</div>
+          <div class="play-options">
+            <button id="local-game" class="play-option play-option-primary" type="button">
+              <span class="play-option-title">Local match</span>
+              <span class="play-option-copy">Play both sides on this device</span>
+            </button>
+            <button id="guided-opening" class="play-option play-option-secondary" type="button">
+              <span class="play-option-title">Guided opening</span>
+              <span class="play-option-copy">Two minutes on the curved board</span>
+            </button>
+            <button id="rules-open" class="play-option play-option-primary" type="button">
+              <span class="play-option-title">Rules</span>
+              <span class="play-option-copy">How the pieces move, and how a shift works</span>
+            </button>
+          </div>
+          <div class="room-block">
+            <div class="room-block-label">Private room</div>
+            <button id="create-room" class="outline-button full" type="button">Create a room</button>
+            <form id="join-form" class="join-row">
+              <label class="visually-hidden" for="room-code">Six-character room code</label>
+              <input id="room-code" class="room-code-input" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Room code" aria-describedby="form-error" />
+              <button class="secondary-button" type="submit">Join</button>
+            </form>
+            <p id="form-error" class="form-error" role="status"></p>
+            <p class="lobby-note">No account needed. Share the code with one other player.</p>
+          </div>
+        </section>
+
+        <section id="rules-panel" class="rules-panel" hidden>
+          <button id="rules-back" class="rules-back" type="button">← Menu</button>
+          <h1 class="rules-title">Rules</h1>
+          <p class="rules-lead">Two players, one board, and two shapes for the same pieces.</p>
+
+          <h2>A turn</h2>
+          <ul>
+            <li>Move one piece, or shift the board. Either choice spends your turn.</li>
+            <li>A shift switches the shared board between the flat 8×8 and the curved board.</li>
+            <li>You can preview the other shape first. The match does not change until you commit the shift.</li>
+            <li>Each player can shift ${SHIFTS_PER_PLAYER} times in a match. After a shift, each player makes one piece move before the next shift is allowed.</li>
+            <li>A shift back to the flat board is not allowed while a king is off the 8×8.</li>
+          </ul>
+
+          <h2>Winning</h2>
+          <ul>
+            <li>Capture the other king. That wins immediately.</li>
+            <li>A king may stay under attack. There is no checkmate.</li>
+            <li>There is no castling and no en passant.</li>
+            <li>The same position three times is a draw.</li>
+          </ul>
+
+          <h2>The armies</h2>
+          <p>Each side has a king, a queen, two rooks, two bishops, two knights, and eight pawns. White’s back rank, from a1 to h1, is rook, bishop, knight, bishop, rook, king, knight, queen. Pawns start on the second rank. Black mirrors White by a half-turn, so the black king starts on c8 and the queen on a8.</p>
+
+          <h2>Flat board</h2>
+          <p>Only the 64 labeled squares are in play. Kings, rooks, bishops, queens, and knights move as in chess. A pawn steps one square forward, or two squares from its starting square, and captures one square diagonally forward. A pawn that reaches the last rank becomes a queen.</p>
+          <p>A piece on any other tile is in the shadow. It keeps its place, but on the flat board it cannot move, capture, block, or be captured.</p>
+
+          <h2>Curved board</h2>
+          <p>The curved board is a patch of squares with five around every corner: 109 tiles. Captures happen only on the square a piece lands on.</p>
+          <ul>
+            <li>A rook slides through opposite edges and stops at the first piece or the edge of the board.</li>
+            <li>A bishop steps to a square that touches only a corner, then leaves through the opposite corner on the same side.</li>
+            <li>The queen uses both of those paths.</li>
+            <li>A knight takes two steps along a rook path, then one step to either side, and jumps anything in between.</li>
+            <li>A king steps to a labeled square that shares an edge or a corner.</li>
+            <li>A pawn has one forward step: the empty neighboring square that gains the most rank. It captures an enemy on a higher-rank corner beside that step. White advances toward rank 8 and Black toward rank 1. A pawn that arrives there becomes a queen.</li>
+          </ul>
+
+          <h2>Your camera</h2>
+          <p>Drag to turn the board, right-drag to pan, and scroll or pinch to zoom. Reset view restores your camera. Your view never changes the other player’s board.</p>
         </section>
 
         <section id="match-panel" class="match-panel" hidden>
@@ -73,21 +130,21 @@ app.innerHTML = `
             <div><div class="room-label">Private room</div><div id="room-code-display" class="room-value"></div></div>
             <button id="share-room" class="share-button" type="button">Copy invite</button>
           </div>
-          <div class="players">
-            <div id="white-seat" class="player-seat"><div class="player-topline"><span class="player-stone"></span> White</div><div class="player-bottomline"><span id="white-role">Player one</span><span id="white-connection" class="connection online">Here</span></div></div>
-            <div id="black-seat" class="player-seat"><div class="player-topline"><span class="player-stone black"></span> Black</div><div class="player-bottomline"><span id="black-role">Player two</span><span id="black-connection" class="connection offline">Waiting</span></div></div>
-          </div>
-
-          <section class="rail-section" aria-labelledby="geometry-heading">
+          <section class="geometry-card" aria-labelledby="geometry-heading">
             <div class="section-heading"><span id="geometry-heading">Board geometry</span><span id="geometry-state-caption" class="section-caption">Shared state</span></div>
             <div class="mode-switch" role="group" aria-label="Preview board geometry">
-              <button id="flat-preview" class="mode-choice" type="button" aria-pressed="true"><span class="mode-symbol" aria-hidden="true">▦</span> Flat</button>
-              <button id="hyperbolic-preview" class="mode-choice" type="button" aria-pressed="false"><span class="mode-symbol" aria-hidden="true">◒</span> Curved</button>
+              <button id="flat-preview" class="mode-choice" type="button" aria-pressed="true"><span class="mode-symbol" aria-hidden="true">▦</span><span class="mode-choice-copy"><span class="mode-choice-name">Flat</span><span class="mode-choice-detail">8×8 grid</span></span></button>
+              <button id="hyperbolic-preview" class="mode-choice" type="button" aria-pressed="false"><span class="mode-symbol" aria-hidden="true">◒</span><span class="mode-choice-copy"><span class="mode-choice-name">Curved</span><span class="mode-choice-detail">Hyperbolic</span></span></button>
             </div>
             <p id="mode-help" class="mode-help">Pieces use the familiar 8×8 square grid.</p>
             <p id="shift-lock" class="shift-lock ready">A geometry shift is available.</p>
-            <button id="commit-shift" class="outline-button full shift-button" type="button" hidden>Spend a turn to shift</button>
+            <button id="commit-shift" class="primary-button shift-button" type="button" hidden>Spend a turn to shift</button>
           </section>
+
+          <div class="players">
+            <div id="white-seat" class="player-seat"><div class="player-topline"><span class="player-stone"></span> White</div><div class="player-bottomline"><span id="white-role">Player one</span><span id="white-connection" class="connection online">Here</span></div><div id="white-shifts" class="player-shifts ready">${SHIFTS_PER_PLAYER} shifts left</div></div>
+            <div id="black-seat" class="player-seat"><div class="player-topline"><span class="player-stone black"></span> Black</div><div class="player-bottomline"><span id="black-role">Player two</span><span id="black-connection" class="connection offline">Waiting</span></div><div id="black-shifts" class="player-shifts ready">${SHIFTS_PER_PLAYER} shifts left</div></div>
+          </div>
 
           <section id="opening-guide" class="opening-guide" aria-live="polite" hidden>
             <div id="opening-guide-step" class="opening-guide-step"></div>
@@ -161,6 +218,8 @@ element<HTMLFormElement>("join-form").addEventListener("submit", (event) => {
 
 element<HTMLButtonElement>("local-game").addEventListener("click", () => startLocalGame(false));
 element<HTMLButtonElement>("guided-opening").addEventListener("click", () => startLocalGame(true));
+element<HTMLButtonElement>("rules-open").addEventListener("click", () => showRules(true));
+element<HTMLButtonElement>("rules-back").addEventListener("click", () => showRules(false));
 
 function startLocalGame(withGuide: boolean): void {
   gameState = createInitialState();
@@ -186,6 +245,10 @@ element<HTMLButtonElement>("cancel-preview").addEventListener("click", () => {
 
 element<HTMLButtonElement>("commit-shift").addEventListener("click", () => {
   if (!gameState || !previewMode || previewMode === gameState.mode) return;
+  if ((gameState.shiftsRemaining[gameState.activePlayer] ?? 0) <= 0) {
+    showToast(`You have used all ${SHIFTS_PER_PLAYER} shifts.`);
+    return;
+  }
   if (gameState.shiftCooldown > 0) {
     showToast(`Shift is locked for ${gameState.shiftCooldown} more turn${gameState.shiftCooldown === 1 ? "" : "s"}.`);
     return;
@@ -486,6 +549,10 @@ function renderSeats(): void {
     const connected = matchKind === "local" || roomConnections[side];
     connection.textContent = connected ? "Here" : roomCode && matchKind === "online" && side === "black" ? "Waiting" : "Away";
     connection.className = `connection ${connected ? "online" : "offline"}`;
+    const shiftsLeft = gameState.shiftsRemaining[side] ?? 0;
+    const shifts = element<HTMLDivElement>(`${side}-shifts`);
+    shifts.textContent = shiftsLeft === 1 ? "1 shift left" : `${shiftsLeft} shifts left`;
+    shifts.classList.toggle("ready", shiftsLeft > 0);
   }
 }
 
@@ -499,18 +566,22 @@ function renderGeometryControls(state: GameState): void {
   element<HTMLParagraphElement>("mode-help").textContent = state.history.length === 0
     ? "Try a curved preview. A shift spends your turn and opens extra rook routes."
     : displayMode === "flat"
-      ? "King, rook, and knight use familiar square-grid moves; guards step one tile."
-      : "Rooks follow center-crossing routes through the five-around-a-corner tiling.";
+      ? "Pawns step and capture forward. Rooks, bishops, and the queen slide. Knights jump."
+      : "Pawns step toward the far rank. Rooks follow edges, bishops cross corners, and the queen does both.";
 
+  const shiftsLeft = state.shiftsRemaining[state.activePlayer] ?? 0;
+  const shiftReady = state.shiftCooldown === 0 && shiftsLeft > 0;
   const lock = element<HTMLParagraphElement>("shift-lock");
-  lock.className = `shift-lock ${state.shiftCooldown === 0 ? "ready" : ""}`;
-  lock.textContent = state.shiftCooldown === 0
-    ? "A geometry shift is available. It uses your turn."
-    : `Shift locked · ${state.shiftCooldown} piece move${state.shiftCooldown === 1 ? "" : "s"} remaining`;
+  lock.className = `shift-lock ${shiftReady ? "ready" : ""}`;
+  lock.textContent = shiftsLeft <= 0
+    ? `${capitalize(state.activePlayer)} has used all ${SHIFTS_PER_PLAYER} shifts.`
+    : state.shiftCooldown === 0
+      ? "A geometry shift is available. It uses your turn."
+      : `Shift locked · ${state.shiftCooldown} piece move${state.shiftCooldown === 1 ? "" : "s"} remaining`;
   const shift = element<HTMLButtonElement>("commit-shift");
   const showingUncommittedMode = previewMode !== null && previewMode !== state.mode;
   shift.hidden = !showingUncommittedMode;
-  shift.disabled = !canSubmitAction() || state.shiftCooldown > 0;
+  shift.disabled = !canSubmitAction() || !shiftReady;
   shift.textContent = `Commit ${capitalize(previewMode ?? state.mode)} shift · spend this turn`;
 }
 
@@ -595,6 +666,7 @@ function setLobbyPending(isPending: boolean): void {
   element<HTMLButtonElement>("create-room").disabled = isPending;
   element<HTMLInputElement>("room-code").disabled = isPending;
   element<HTMLButtonElement>("local-game").disabled = isPending;
+  element<HTMLButtonElement>("guided-opening").disabled = isPending;
   const join = document.querySelector<HTMLFormElement>("#join-form button[type=submit]");
   if (join) join.disabled = isPending;
 }
@@ -608,8 +680,14 @@ function setConnectionStatus(status: "connecting" | "connected" | "offline"): vo
   clientConnectionStatus = status;
 }
 
+function showRules(open: boolean): void {
+  element<HTMLElement>("lobby-panel").hidden = open;
+  element<HTMLElement>("rules-panel").hidden = !open;
+}
+
 function showMatchPanel(): void {
   element<HTMLElement>("lobby-panel").hidden = true;
+  element<HTMLElement>("rules-panel").hidden = true;
   element<HTMLElement>("match-panel").hidden = false;
 }
 

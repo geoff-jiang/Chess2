@@ -18,6 +18,8 @@ export interface Arena {
   oppositeTile: Map<string, string>;
   vertexTiles: Map<string, Set<string>>;
   touchNeighbors: Map<string, Set<string>>;
+  /** Chess rank for anchors, and the average rank of the nearest anchors elsewhere. */
+  rankByTile: Map<string, number>;
   centerTileId: string;
 }
 
@@ -86,6 +88,7 @@ export function createArena(): Arena {
     oppositeTile,
     vertexTiles,
     touchNeighbors,
+    rankByTile: buildRankField(tiles, flatSquareByTile),
     centerTileId: "h-000",
   };
 }
@@ -109,6 +112,85 @@ export function rookRay(arena: Arena, startTileId: string, exitEdge: number): st
   }
 
   return route;
+}
+
+/** Tiles that meet `tileId` at one corner and do not share an edge with it. */
+export function cornerNeighbors(arena: Arena, tileId: string, vertexIndex: number): string[] {
+  const tile = arena.tiles.get(tileId);
+  if (!tile) return [];
+  const vertex = normalizeEdge(vertexIndex);
+  const incident = arena.vertexTiles.get(pointKey(tile.vertices[vertex]));
+  if (!incident) return [];
+  const alongside = new Set(edgesAtVertex(tile, vertex).flatMap((link) => (link ? [link.tileId] : [])));
+  return [...incident].filter((id) => id !== tileId && !alongside.has(id)).sort();
+}
+
+/**
+ * Diagonal through opposite corners. The first step is a corner-only neighbor.
+ * Each later step leaves through the opposite corner, on the same side of the
+ * square as the step that entered.
+ */
+export function bishopRay(arena: Arena, startTileId: string, vertexIndex: number, firstTileId: string): string[] {
+  const start = arena.tiles.get(startTileId);
+  if (!start) return [];
+  const route: string[] = [];
+  const visited = new Set([startTileId]);
+  let previous = start;
+  let vertex = normalizeEdge(vertexIndex);
+  let nextId: string | null = firstTileId;
+
+  while (nextId && !visited.has(nextId) && route.length < arena.tiles.size) {
+    const current = arena.tiles.get(nextId);
+    if (!current) break;
+    const arrival = vertexIndexOf(current, previous.vertices[vertex]);
+    const shoulderEdge = shoulderEdgeIndex(previous, vertex, current);
+    if (arrival < 0 || shoulderEdge < 0) break;
+    route.push(nextId);
+    visited.add(nextId);
+    const sign = shoulderEdge === vertex ? 1 : -1;
+    const exitVertex = (arrival + 2) % 4;
+    const exitEdge = sign === 1 ? exitVertex : (exitVertex + 3) % 4;
+    const exitShoulder = current.neighbors[exitEdge];
+    previous = current;
+    vertex = exitVertex;
+    nextId = exitShoulder ? cornerPastShoulder(arena, current, exitVertex, exitShoulder.tileId) : null;
+  }
+
+  return route;
+}
+
+/** The vertex two tiles share, when they touch at a corner or an edge. */
+export function sharedVertex(left: HyperbolicTile, right: HyperbolicTile): Vector3 | null {
+  for (const vertex of left.vertices) {
+    const key = pointKey(vertex);
+    if (right.vertices.some((candidate) => pointKey(candidate) === key)) return vertex;
+  }
+  return null;
+}
+
+function edgesAtVertex(tile: HyperbolicTile, vertexIndex: number): (EdgeLink | null)[] {
+  return [vertexIndex, (vertexIndex + 3) % 4].map((edgeIndex) => tile.neighbors[edgeIndex]);
+}
+
+function vertexIndexOf(tile: HyperbolicTile, vertex: Vector3): number {
+  const key = pointKey(vertex);
+  return tile.vertices.findIndex((candidate) => pointKey(candidate) === key);
+}
+
+function shoulderEdgeIndex(tile: HyperbolicTile, vertexIndex: number, corner: HyperbolicTile): number {
+  const cornerNeighborsByEdge = new Set(corner.neighbors.flatMap((link) => (link ? [link.tileId] : [])));
+  for (const edgeIndex of [vertexIndex, (vertexIndex + 3) % 4]) {
+    const link = tile.neighbors[edgeIndex];
+    if (link && cornerNeighborsByEdge.has(link.tileId)) return edgeIndex;
+  }
+  return -1;
+}
+
+function cornerPastShoulder(arena: Arena, tile: HyperbolicTile, vertexIndex: number, shoulderTileId: string): string | null {
+  const shoulder = arena.tiles.get(shoulderTileId);
+  if (!shoulder) return null;
+  const besideShoulder = new Set(shoulder.neighbors.flatMap((link) => (link ? [link.tileId] : [])));
+  return cornerNeighbors(arena, tile.id, vertexIndex).find((id) => besideShoulder.has(id)) ?? null;
 }
 
 export function squareId(row: number, col: number): SquareId {
@@ -282,6 +364,47 @@ function buildAnchors(
     flatSquareByTile.set(secondTile, oppositeSquare);
   }
   return { anchors, flatSquareByTile };
+}
+
+function buildRankField(
+  tiles: Map<string, HyperbolicTile>,
+  flatSquareByTile: Map<string, SquareId>,
+): Map<string, number> {
+  const rankByTile = new Map<string, number>();
+  for (const [tileId, square] of flatSquareByTile) rankByTile.set(tileId, Number(square[1]));
+  for (const tileId of tiles.keys()) {
+    if (!rankByTile.has(tileId)) rankByTile.set(tileId, nearestAnchorRank(tiles, flatSquareByTile, tileId));
+  }
+  return rankByTile;
+}
+
+function nearestAnchorRank(
+  tiles: Map<string, HyperbolicTile>,
+  flatSquareByTile: Map<string, SquareId>,
+  startTileId: string,
+): number {
+  const seen = new Set([startTileId]);
+  let layer = [startTileId];
+  let distance = 0;
+  while (layer.length) {
+    const next: string[] = [];
+    const ranks: number[] = [];
+    for (const tileId of layer) {
+      if (distance > 0) {
+        const square = flatSquareByTile.get(tileId);
+        if (square) ranks.push(Number(square[1]));
+      }
+      for (const link of tiles.get(tileId)?.neighbors ?? []) {
+        if (!link || seen.has(link.tileId)) continue;
+        seen.add(link.tileId);
+        next.push(link.tileId);
+      }
+    }
+    if (ranks.length) return ranks.reduce((sum, rank) => sum + rank, 0) / ranks.length;
+    layer = next;
+    distance += 1;
+  }
+  return 4.5;
 }
 
 function pointKey(point: Vector3): string {

@@ -49,7 +49,7 @@ test("rooms reserve two seats, authorize turns, broadcast state, and restore a d
     const blackMove = receive(black);
     white.send(JSON.stringify({
       type: "action",
-      action: { kind: "move", pieceId: "white-guard", toTileId: ARENA.anchors.get("d3") },
+      action: { kind: "move", pieceId: "white-pawn-e", toTileId: ARENA.anchors.get("e4") },
     }));
     const [whiteAfterMoveMessage, blackAfterMoveMessage] = await Promise.all([whiteMove, blackMove]);
     const whiteAfterMove = snapshot(whiteAfterMoveMessage);
@@ -80,10 +80,12 @@ test("rooms reserve two seats, authorize turns, broadcast state, and restore a d
     assert.equal(blackResume.state.activePlayer, "black");
     assert.equal(blackResume.state.history.length, 1);
 
-    await playAction(black, "black-guard", ARENA.anchors.get("e6")!, white);
-    await playAction(white, "white-rook", ARENA.anchors.get("a8")!, black);
-    await playAction(black, "black-king", ARENA.anchors.get("c8")!, white);
-    const [whiteFinish, blackFinish] = await playAction(white, "white-rook", ARENA.anchors.get("c8")!, black);
+    await playAction(black, "black-pawn-d", ARENA.anchors.get("d5")!, white);
+    await playAction(white, "white-pawn-e", ARENA.anchors.get("d5")!, black);
+    await playAction(black, "black-king", ARENA.anchors.get("d7")!, white);
+    await playAction(white, "white-rook-e", ARENA.anchors.get("e7")!, black);
+    await playAction(black, "black-king", ARENA.anchors.get("c6")!, white);
+    const [whiteFinish, blackFinish] = await playAction(white, "white-pawn-e", ARENA.anchors.get("c6")!, black);
     assert.deepEqual(whiteFinish.state.status, { kind: "won", winner: "white" });
     assert.deepEqual(blackFinish.state.status, { kind: "won", winner: "white" });
 

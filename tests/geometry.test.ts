@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createArena, rookRay, type SquareId } from "../src/shared/geometry.ts";
+import { bishopRay, cornerNeighbors, createArena, rookRay, type SquareId } from "../src/shared/geometry.ts";
 
 test("the four-ring square-pentagonal patch contains 109 tiles", () => {
   const arena = createArena();
@@ -35,6 +35,30 @@ test("each tile has four edge slots and rook rays follow edge continuation", () 
   assert.ok(ray.length > 0);
   assert.equal(ray[0], tile.neighbors[0]?.tileId);
 });
+
+test("bishop rays cross one corner and leave through the opposite corner", () => {
+  const arena = createArena();
+  const center = arena.centerTileId;
+  const corners = cornerNeighbors(arena, center, 0);
+  assert.equal(corners.length, 2);
+  assert.ok(corners.every((id) => sharedVertexCount(arena, center, id) === 1));
+
+  const ray = bishopRay(arena, center, 0, corners[0]);
+  assert.equal(ray[0], corners[0]);
+  assert.ok(ray.length >= 2);
+  assert.equal(new Set(ray).size, ray.length);
+  assert.equal(sharedVertexCount(arena, ray[0], ray[1]), 1);
+  assert.notDeepEqual(sharedVertexKeys(arena, center, ray[0]), sharedVertexKeys(arena, ray[0], ray[1]));
+  assert.ok(arena.tiles.get(ray[0])!.neighbors.every((link) => link?.tileId !== ray[1]));
+});
+
+function sharedVertexKeys(arena: ReturnType<typeof createArena>, leftId: string, rightId: string): string[] {
+  return [...arena.vertexTiles.entries()].filter(([, tiles]) => tiles.has(leftId) && tiles.has(rightId)).map(([key]) => key);
+}
+
+function sharedVertexCount(arena: ReturnType<typeof createArena>, leftId: string, rightId: string): number {
+  return sharedVertexKeys(arena, leftId, rightId).length;
+}
 
 function oppositeSquare(square: SquareId): SquareId {
   const rank = 9 - Number(square[1]);

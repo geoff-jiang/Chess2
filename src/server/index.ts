@@ -330,7 +330,7 @@ function startServer(): void {
   const server = createGameServer();
   const port = Number(process.env.PORT ?? 8787);
   server.httpServer.listen(port, "0.0.0.0", () => {
-    process.stdout.write(`Curvature Chess listening on http://localhost:${port}\n`);
+    process.stdout.write(`Chess Without Borders listening on http://localhost:${port}\n`);
   });
 }
 
