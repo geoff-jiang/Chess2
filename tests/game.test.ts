@@ -2,6 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Chess } from "chess.js";
 import { applyAction, canShift, createInitialState, createStateFromFen, getLegalMoves, isInCheck, positionKey, validatePosition, RuleViolation, type GameState, type Promotion } from "../src/shared/game.ts";
+
+test("resignation ends the match for either side without changing the board", () => {
+  const state = createInitialState();
+  const finished = applyAction(state, { kind: "resign", side: "black" });
+  assert.deepEqual(finished.status, { kind: "won", winner: "white", reason: "resignation" });
+  assert.equal(finished.activePlayer, "white");
+  assert.deepEqual(finished.pieces, state.pieces);
+  assert.equal(finished.history.at(-1)?.notation, "Black resigns");
+  assert.throws(() => applyAction(finished, { kind: "resign", side: "white" }), /already finished/);
+});
 import { ARENA, type SquareId } from "../src/shared/geometry.ts";
 
 function tile(square: string): string { return ARENA.anchors.get(square as SquareId)!; }

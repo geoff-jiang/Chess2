@@ -115,6 +115,37 @@ test("rooms reserve two seats, authorize turns, broadcast state, and restore a d
   }
 });
 
+test("a player can resign outside their turn but cannot resign the other seat", async () => {
+  const game = createGameServer();
+  const clients: WebSocket[] = [];
+  await new Promise<void>((resolve) => game.httpServer.listen(0, "127.0.0.1", resolve));
+  const address = game.httpServer.address();
+  assert.ok(address && typeof address !== "string");
+  const url = `ws://127.0.0.1:${address.port}/socket`;
+  try {
+    const white = await openClient(url, clients);
+    const whiteCreated = receive(white);
+    white.send(JSON.stringify({ type: "create" }));
+    const room = snapshot(await whiteCreated);
+    const black = await openClient(url, clients);
+    const whiteJoined = receive(white), blackJoined = receive(black);
+    black.send(JSON.stringify({ type: "join", code: room.code }));
+    await Promise.all([whiteJoined, blackJoined]);
+
+    const spoof = receive(black);
+    black.send(JSON.stringify({ type: "action", action: { kind: "resign", side: "white" } }));
+    assert.equal(error(await spoof).code, "not-your-seat");
+
+    const whiteFinished = receive(white), blackFinished = receive(black);
+    black.send(JSON.stringify({ type: "action", action: { kind: "resign", side: "black" } }));
+    assert.deepEqual(snapshot(await whiteFinished).state.status, { kind: "won", winner: "white", reason: "resignation" });
+    assert.deepEqual(snapshot(await blackFinished).state.status, { kind: "won", winner: "white", reason: "resignation" });
+  } finally {
+    for (const client of clients) client.terminate();
+    await game.close();
+  }
+});
+
 interface SnapshotMessage {
   type: "snapshot";
   code: string;

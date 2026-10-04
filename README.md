@@ -1,6 +1,6 @@
-# Curvature Chess
+# Chess Without Borders
 
-Curvature Chess is a two-player browser game on two linked boards: a familiar 8×8 grid and a finite patch of the regular hyperbolic `{4,5}` tiling.
+Chess Without Borders is a two-player browser game on two linked boards: a familiar 8×8 grid and a finite patch of the regular hyperbolic `{4,5}` tiling.
 
 ## Run it
 
@@ -22,16 +22,17 @@ Open the Vite URL printed by `npm run dev`. For a production build, `npm start` 
 ## Play
 
 - Create a private room and send the six-character code or copied invite link to one other player. A room reserves exactly two seats.
-- Choose **Try a local match on this device** to play both sides without a second browser.
+- Choose **Play locally on this device** to play both sides without a second browser.
 - Choose **Explore curved routes** to preview a geometry shift, commit it, and inspect newly opened routes.
-- Drag to orbit, right-drag to pan, and use the wheel or a pinch gesture to zoom. **Reset view** restores that browser's camera. Camera state is never sent to the server.
-- In curved mode, selecting a piece recenters its neighborhood into a readable local view, including pieces at the outer edge. **Whole arena** returns to the overview; **Focus piece** restores the close view. These controls only affect your camera/projection.
-- Green destination rings mean moves; red rings mean captures. Hover or keyboard-focus a destination to trace one route at a time. Guide dots show crossed tiles; small route rings show intermediate landing tiles. A faded piece shows the arrival position, and a selected pawn has a forward arrow.
+- Drag to orbit, right-drag to pan, and use the wheel or a pinch gesture to zoom. Press **R** to reset the camera, **W** to fit the whole board while keeping your viewing angle, or **F** to focus the selected piece. Camera state is never sent to the server.
+- In curved mode, selecting a piece recenters its neighborhood into a readable local view, including pieces at the outer edge. The camera controls only affect your view/projection.
+- Gold rings mark shared-tile moves, lavender double rings mark curved-only moves, and red rings mark captures. Hover or keyboard-focus a destination to trace one route at a time. Guide dots show crossed tiles; small route rings show intermediate landing tiles. A faded piece shows the arrival position, and a selected pawn has a forward arrow.
 - In curved mode, select a destination, inspect the explanation, then press **Move** to confirm. **Cancel** or Escape clears it. **Show entire route** frames a long route. Flat moves still complete when their destination is selected.
 - The board stays visible while the controls scroll independently, including on narrow screens.
 - Choose the other geometry to preview it locally. **Commit** spends the current turn and changes the shared board.
+- The **Playing on** badge names the live geometry even during a local preview. Selected pieces keep a blue marker while the board morphs. The theme button follows the system setting initially and remembers your choice.
 - A geometry shift starts a two-piece-move lock. After each player has made one piece move, another shift is available.
-- Checkmate wins. Kings cannot be captured or left in check. A safe geometry shift counts as a possible escape in Curvature matches. Three visits to the same full position draw. The finish panel offers a rematch; online, both players must request one.
+- Checkmate or resignation wins. Kings cannot be captured or left in check. A safe geometry shift counts as a possible escape in Curvature matches. Three visits to the same full position draw. The finish panel offers a rematch; online, both players must request one. **Back to menu** leaves the current view; in an online match, it disconnects without resigning and your reserved seat can be restored with its room link.
 - The piece/destination buttons support keyboard play. Pawn promotion asks you to choose queen, rook, bishop, or knight before committing the move.
 - **Local analysis position** accepts FEN for a local match and reports invalid positions. Leave it blank for the full opening.
 

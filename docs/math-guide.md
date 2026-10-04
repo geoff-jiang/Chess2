@@ -1,4 +1,4 @@
-# Curvature Chess: the mathematics behind the implementation
+# Chess Without Borders: the mathematics behind the implementation
 
 This guide describes the current implementation, including its deliberate game rules and its approximations. Read sections 1–9 first to understand the game; sections 10–15 explain the graphics and verification.
 

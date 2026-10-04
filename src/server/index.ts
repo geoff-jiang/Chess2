@@ -185,7 +185,11 @@ function handleMessage(
   const { room, side } = assignment;
 
   if (message.type === "action") {
-    if (room.state.activePlayer !== side) {
+    if (message.action?.kind === "resign" && message.action.side !== side) {
+      sendError(socket, "not-your-seat", "You can only resign your own seat.");
+      return;
+    }
+    if (message.action?.kind !== "resign" && room.state.activePlayer !== side) {
       sendError(socket, "not-your-turn", "Wait for the other player to finish their turn.");
       return;
     }
@@ -265,6 +269,9 @@ function parseMessage(raw: string): ClientMessage {
     if (value.action.kind === "shift" && (value.action.toMode === "flat" || value.action.toMode === "hyperbolic")) {
       return { type: "action", action: { kind: "shift", toMode: value.action.toMode } };
     }
+    if (value.action.kind === "resign" && (value.action.side === "white" || value.action.side === "black")) {
+      return { type: "action", action: { kind: "resign", side: value.action.side } };
+    }
     throw new Error("Invalid action");
   }
   if (value.type === "rematch") return { type: "rematch" };
@@ -337,7 +344,7 @@ function startServer(): void {
   const server = createGameServer();
   const port = Number(process.env.PORT ?? 8787);
   server.httpServer.listen(port, "0.0.0.0", () => {
-    process.stdout.write(`Curvature Chess listening on http://localhost:${port}\n`);
+    process.stdout.write(`Chess Without Borders listening on http://localhost:${port}\n`);
   });
 }
 

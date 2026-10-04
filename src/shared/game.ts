@@ -60,6 +60,11 @@ export function getLegalMoves(state: GameState, pieceId: string, arena: Arena = 
 export function applyAction(state: GameState, action: GameAction, arena: Arena = ARENA): GameState {
   if (state.status.kind !== "playing") throw new RuleViolation("match-finished", "This match has already finished.");
   validatePosition(state, arena);
+  if (action.kind === "resign") {
+    if (action.side !== "white" && action.side !== "black") throw new RuleViolation("illegal-move", "Choose a valid side to resign.");
+    return { ...state, status: { kind: "won", winner: oppositeSide(action.side), reason: "resignation" },
+      history: [...state.history, { ply: state.history.length + 1, actor: action.side, action, notation: `${capitalize(action.side)} resigns` }] };
+  }
   if (action.kind === "shift") return applyShift(state, action, arena);
   if (action.kind !== "move") throw new RuleViolation("illegal-move", "Unknown action.");
   const piece = state.pieces.find((candidate) => candidate.id === action.pieceId);

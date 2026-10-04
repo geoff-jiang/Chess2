@@ -21,11 +21,12 @@ export interface MoveOption {
 }
 export type GameAction =
   | { kind: "move"; pieceId: string; toTileId: string; promotion?: Promotion }
-  | { kind: "shift"; toMode: GeometryMode };
+  | { kind: "shift"; toMode: GeometryMode }
+  | { kind: "resign"; side: Side };
 export type DrawReason = "repetition" | "stalemate" | "insufficient-material" | "fifty-move";
 export type GameStatus =
   | { kind: "playing" }
-  | { kind: "won"; winner: Side; reason: "checkmate" }
+  | { kind: "won"; winner: Side; reason: "checkmate" | "resignation" }
   | { kind: "draw"; reason: DrawReason };
 export interface HistoryItem {
   ply: number;

@@ -42,6 +42,11 @@ export class BoardView {
   private readonly pieceLayer = new THREE.Group();
   private readonly routeLayer = new THREE.Group();
   private readonly markerLayer = new THREE.Group();
+  private readonly selectionRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.4, 0.065, 8, 40),
+    new THREE.MeshBasicMaterial({ color: "#3c9de0", depthTest: false, transparent: true, opacity: 0.95 }),
+  );
+  private ground?: THREE.Mesh<THREE.CircleGeometry, THREE.MeshStandardMaterial>;
   private readonly tileVisuals = new Map<string, TileVisual>();
   private readonly pieceAssets = new Map<string, THREE.Group>();
   private readonly raycaster = new THREE.Raycaster();
@@ -85,7 +90,9 @@ export class BoardView {
     this.renderer.domElement.setAttribute("aria-hidden", "true");
     container.append(this.renderer.domElement);
 
-    this.scene.add(this.tileLayer, this.routeLayer, this.markerLayer, this.pieceLayer);
+    this.scene.add(this.tileLayer, this.routeLayer, this.markerLayer, this.pieceLayer, this.selectionRing);
+    this.selectionRing.visible = false;
+    this.selectionRing.renderOrder = 10;
     this.addLighting();
     this.createTiles();
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -111,15 +118,29 @@ export class BoardView {
 
   setResetButton(button: HTMLButtonElement): void {
     button.addEventListener("click", () => {
-      this.showWholeArena();
+      this.resetView();
     });
+  }
+
+  resetView(): void {
+    this.pendingFocusId = null;
+    this.reproject();
+    this.onFocusChanged(null);
+    this.setOverviewPose(this.renderMode);
+  }
+
+  setTheme(dark: boolean): void {
+    const color = dark ? "#172632" : "#d8dec4";
+    this.scene.background = new THREE.Color(color);
+    if (this.scene.fog instanceof THREE.Fog) this.scene.fog.color.set(color);
+    this.ground?.material.color.set(color);
   }
 
   showWholeArena(): void {
     this.pendingFocusId = null;
     this.reproject();
     this.onFocusChanged(null);
-    this.setOverviewPose(this.renderMode);
+    this.setOverviewPose(this.renderMode, true);
   }
 
   previewDestination(tileId: string | null): void {
@@ -189,6 +210,7 @@ export class BoardView {
     this.legalMoves = legalMoves;
     this.interactive = interactive;
     this.applyTileStyles();
+    this.updateSelectionRing(this.isMorphing ? 0 : 1);
     this.rebuildRoutes();
     this.rebuildPieces();
   }
@@ -215,9 +237,10 @@ export class BoardView {
     this.controls.update();
   }
 
-  private setOverviewPose(mode: GeometryMode): void {
+  private setOverviewPose(mode: GeometryMode, preserveDirection = false): void {
     this.overview = true;
     this.framedRadius = null;
+    const priorDirection = this.camera.position.clone().sub(this.controls.target).normalize();
     const bounds = new THREE.Box3();
     const boundary: THREE.Vector3[] = [];
     for (const [tileId, visual] of this.tileVisuals) {
@@ -227,9 +250,9 @@ export class BoardView {
     const sphere = bounds.getBoundingSphere(new THREE.Sphere());
     sphere.radius = Math.max(...boundary.map((point) => point.distanceTo(sphere.center)));
     this.controls.target.copy(sphere.center);
-    const direction = mode === "hyperbolic"
-      ? new THREE.Vector3(0, 1, 0.22).normalize()
-      : new THREE.Vector3(0, 12, 17).normalize();
+    const direction = preserveDirection
+      ? priorDirection
+      : mode === "hyperbolic" ? new THREE.Vector3(0, 1, 0.22).normalize() : new THREE.Vector3(0, 12, 17).normalize();
     const distance = overviewDistance(sphere.radius + 1, this.camera.fov, this.camera.aspect);
     this.controls.maxDistance = Math.max(500, distance * 2);
     this.camera.position.copy(sphere.center).add(direction.multiplyScalar(distance));
@@ -253,6 +276,7 @@ export class BoardView {
     ground.position.y = -0.56;
     ground.receiveShadow = false;
     this.scene.add(ground);
+    this.ground = ground;
   }
 
   private createTiles(): void {
@@ -349,8 +373,8 @@ export class BoardView {
       visual.mesh.material.color.set(color ?? baseColor(tileId));
       visual.mesh.material.emissive.set(color ?? "#000000");
       visual.mesh.material.emissiveIntensity = isSelected ? 0.28 : isDestination ? 0.17 : isRoute ? 0.08 : isThreatenedKing || isTutorialTarget ? 0.18 : 0;
-      visual.rim.material.color.set(isDestination ? extra ? BOARD_THEME.extraDestinationRim : BOARD_THEME.destinationRim : extra ? BOARD_THEME.extraRim : BOARD_THEME.rim);
-      visual.rim.material.opacity = isDestination ? 0.96 : isRoute || isTutorialTarget ? 0.8 : 0.43;
+      visual.rim.material.color.set(isSelected ? BOARD_THEME.selectedRim : isDestination ? extra ? BOARD_THEME.extraDestinationRim : BOARD_THEME.destinationRim : extra ? BOARD_THEME.extraRim : BOARD_THEME.rim);
+      visual.rim.material.opacity = isSelected || isDestination ? 0.96 : isRoute || isTutorialTarget ? 0.8 : 0.43;
     }
   }
 
@@ -656,6 +680,25 @@ export class BoardView {
     }
     this.rebuildPieces();
     if (this.legalMoves.length) this.rebuildRoutes();
+    this.updateSelectionRing(progress);
+  }
+
+  private updateSelectionRing(progress: number): void {
+    const piece = this.state?.pieces.find((candidate) => candidate.id === this.selectedPieceId);
+    const tileId = piece && !isShadow(piece, this.renderMode) ? piece.tileId : null;
+    const visual = tileId ? this.tileVisuals.get(tileId) : undefined;
+    this.selectionRing.visible = !!visual;
+    if (!visual) return;
+    const fromCenter = this.morphFrom === "flat" ? visual.flatCenter : visual.hyperCenter;
+    const toCenter = this.renderMode === "flat" ? visual.flatCenter : visual.hyperCenter;
+    const fromNormal = this.morphFrom === "flat" ? visual.flatNormal : visual.hyperNormal;
+    const toNormal = this.renderMode === "flat" ? visual.flatNormal : visual.hyperNormal;
+    const amount = this.isMorphing ? progress : 1;
+    const normal = fromNormal.clone().lerp(toNormal, amount).normalize();
+    const scale = THREE.MathUtils.lerp(localScale(visual, this.morphFrom), localScale(visual, this.renderMode), amount);
+    this.selectionRing.position.copy(fromCenter).lerp(toCenter, amount).addScaledVector(normal, 0.16 * scale);
+    this.selectionRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    this.selectionRing.scale.setScalar(scale);
   }
 
   private attachPicking(): void {
