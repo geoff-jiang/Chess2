@@ -63,8 +63,18 @@ app.innerHTML = `
             <button class="secondary-button" type="submit">Join</button>
           </form>
           <p id="form-error" class="form-error" role="status"></p>
-          <button id="local-game" class="local-link" type="button">Try a local match on this device</button>
+          <button id="local-game" class="local-link" type="button">Play locally on this device</button>
           <button id="guided-opening" class="local-link guided-start" type="button">Explore curved routes</button>
+          <section class="lobby-rules" aria-labelledby="lobby-rules-title">
+            <h2 id="lobby-rules-title">Before you play</h2>
+            <ul>
+              <li><strong>Checkmate wins.</strong> Flat play uses familiar chess rules.</li>
+              <li><strong>A shift uses your turn.</strong> Make two piece moves before shifting again. Previewing is free.</li>
+              <li><strong>Curved space opens new routes.</strong> Inspect a destination, then confirm your move.</li>
+              <li><strong>Blue tiles are curved only.</strong> Pieces there pause in flat play. Bring kings back to shared tiles before shifting flat.</li>
+            </ul>
+            <div class="tile-legend" aria-label="Board colors"><span><i class="tile-swatch shared" aria-hidden="true"></i> Shared tiles</span><span><i class="tile-swatch extra" aria-hidden="true"></i> Curved only</span></div>
+          </section>
           <details class="analysis-position"><summary>Local analysis position</summary><label for="position-fen">Starting position (FEN)</label><textarea id="position-fen" rows="3" placeholder="Leave blank for the full starting board"></textarea><p>Used when starting a local match. Invalid positions are rejected.</p></details>
           <div class="lobby-note">No account needed. Share a room link with one other player to begin.</div>
         </section>
@@ -104,7 +114,7 @@ app.innerHTML = `
           <section id="move-inspector" class="move-inspector" aria-label="Curved move preview" hidden>
             <strong id="move-inspector-title">Plan your move</strong>
             <p id="movement-help"></p>
-            <p class="move-legend">Green ring: move · Red ring: capture<br>Arrows: route · Faded piece: arrival</p>
+            <p class="move-legend">Gold: shared-tile move · Red ring: capture<br>Lavender + double ring: curved-only move<br>Arrows: route · Faded piece: arrival</p>
             <p id="move-detail" role="status" aria-live="polite"></p>
             <button id="show-route" class="outline-button" type="button" hidden>Show entire route</button>
             <div class="move-actions"><button id="confirm-move" class="secondary-button" type="button" disabled>Choose a destination</button><button id="cancel-move" class="outline-button" type="button" hidden>Cancel</button></div>
@@ -212,7 +222,7 @@ function previewMove(tileId: string | null): void {
   if (inspector.hidden || !selected) return;
   element<HTMLElement>("move-inspector-title").textContent = `${capitalize(selected.type)} · ${tileName(selected.tileId)}`;
   element<HTMLElement>("movement-help").textContent = movementHelp(selected);
-  element<HTMLElement>("move-detail").textContent = move ? explainMove(state, selected, move)
+  element<HTMLElement>("move-detail").textContent = move ? explainMove(state, selected, move) + (!ARENA.flatSquareByTile.has(move.toTileId) ? " Curved-only destination: this piece will be inactive in flat geometry." : "")
     : moves.length ? "Hover or focus a destination to trace its route. Select it, then press Move to confirm."
       : "No legal moves: routes may be blocked, reach the boundary, or expose your king. Try another piece or preview a geometry shift.";
   const confirm = element<HTMLButtonElement>("confirm-move");
@@ -589,6 +599,13 @@ function renderMoveChoices(state: GameState, selected: Piece | null, moves: Retu
     button.type = "button";
     const capture = state.pieces.find((piece) => piece.tileId === tileId);
     button.textContent = `${capture ? "Capture" : "To"} ${tileName(tileId)}`;
+    if (!ARENA.flatSquareByTile.has(tileId)) {
+      button.classList.add("curved-only-destination");
+      const badge = document.createElement("span");
+      badge.className = "curved-only-badge";
+      badge.textContent = "Curved only";
+      button.append(badge);
+    }
     button.dataset.tileId = tileId;
     button.setAttribute("aria-pressed", String(tileId === plannedDestination));
     button.addEventListener("pointerenter", () => previewMove(tileId));
