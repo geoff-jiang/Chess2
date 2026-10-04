@@ -236,9 +236,15 @@ if (inviteCode) {
 render();
 
 function onTilePicked(tileId: string, pieceId: string | null): void {
-  if (!gameState || !canAct()) return;
+  if (!gameState || !canSubmitAction()) return;
+  const displayMode = previewMode ?? gameState.mode;
+  const displayState = previewMode ? { ...gameState, mode: previewMode } : gameState;
   const selected = gameState.pieces.find((piece) => piece.id === selectedPieceId);
-  if (selected && getLegalMoves(gameState, selected.id).some((move) => move.toTileId === tileId)) {
+  if (selected && getLegalMoves(displayState, selected.id).some((move) => move.toTileId === tileId)) {
+    if (previewMode) {
+      showToast("Commit the shift before moving a piece.");
+      return;
+    }
     submitAction({ kind: "move", pieceId: selected.id, toTileId: tileId });
     return;
   }
@@ -248,7 +254,7 @@ function onTilePicked(tileId: string, pieceId: string | null): void {
     showToast("That tile is not a legal destination for this piece.");
     return;
   }
-  if (piece && piece.side === gameState.activePlayer && !isShadow(piece, gameState.mode)) {
+  if (piece && piece.side === gameState.activePlayer && !isShadow(piece, displayMode)) {
     selectedPieceId = selectedPieceId === piece.id ? null : piece.id;
   } else {
     selectedPieceId = null;
@@ -292,10 +298,6 @@ function togglePreview(mode: GeometryMode): void {
   if (!gameState) return;
   previewMode = previewMode === mode || (!previewMode && gameState.mode === mode) ? null : mode;
   render();
-}
-
-function canAct(): boolean {
-  return canSubmitAction() && !previewMode;
 }
 
 function canSubmitAction(): boolean {
@@ -394,7 +396,7 @@ function render(): void {
   const displayState = gameState ? { ...gameState, mode: displayMode } : previewState;
   const selectedPiece = gameState?.pieces.find((piece) => piece.id === selectedPieceId) ?? null;
   const selectedMoves = gameState && selectedPiece ? getLegalMoves(displayState, selectedPiece.id) : [];
-  const isPlayable = canAct();
+  const isPlayable = canSubmitAction();
 
   const guidePiece = guidedStep === "inspect" ? gameState?.pieces.find((piece) => piece.id === "black-rook") : undefined;
   boardView.setTutorialTarget(guidePiece?.tileId ?? null);

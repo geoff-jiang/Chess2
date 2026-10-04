@@ -3,6 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { isInCheck, isShadow, type GameState, type GeometryMode, type MoveOption, type Piece } from "../shared/game.ts";
 import { ARENA, edgeMidpoint, squareCoordinates, type HyperbolicTile, type SquareId, type Vector3 } from "../shared/geometry.ts";
 import { pieceLetter } from "../shared/labels.ts";
+import { displayNormal, toDisplayPoint } from "./hyperbolic-display.ts";
 
 const EDGE_STEPS = 8;
 const EDGE_POINTS = EDGE_STEPS * 4;
@@ -99,12 +100,7 @@ export class BoardView {
     this.resetButton = button;
     button.addEventListener("click", () => {
       this.focusedTileId = null;
-      const activeKing = this.state?.pieces.find((piece) => piece.type === "king" && piece.side === this.state?.activePlayer);
-      if (this.renderMode === "hyperbolic" && activeKing) {
-        this.focusTile(activeKing.tileId);
-      } else {
-        this.setOverviewPose(this.renderMode);
-      }
+      this.setOverviewPose(this.renderMode);
     });
   }
 
@@ -131,10 +127,6 @@ export class BoardView {
       this.isMorphing = true;
       this.focusedTileId = null;
       this.setOverviewPose(mode);
-      if (mode === "hyperbolic") {
-        const activeKing = state.pieces.find((piece) => piece.type === "king" && piece.side === state.activePlayer);
-        if (activeKing) this.focusTile(activeKing.tileId);
-      }
     }
     this.state = state;
     this.selectedPieceId = selectedPieceId;
@@ -151,7 +143,7 @@ export class BoardView {
     this.focusedTileId = tileId;
     const position = this.getTilePosition(visual);
     const offset = this.camera.position.clone().sub(this.controls.target);
-    const desiredDistance = this.renderMode === "hyperbolic" ? Math.max(7, localScale(visual, this.renderMode) * 7.5) : offset.length();
+    const desiredDistance = this.renderMode === "hyperbolic" ? Math.max(16, localScale(visual, this.renderMode) * 10) : offset.length();
     offset.setLength(desiredDistance);
     this.camera.position.copy(position).add(offset);
     this.controls.target.copy(position);
@@ -161,9 +153,9 @@ export class BoardView {
   private setOverviewPose(mode: GeometryMode, wholeArena = false): void {
     this.controls.target.set(0, 0, 0);
     const direction = mode === "hyperbolic"
-      ? new THREE.Vector3(0, 0.96, 0.28).normalize()
+      ? wholeArena ? new THREE.Vector3(0, 0.97, 0.25).normalize() : new THREE.Vector3(0, 0.72, 0.69).normalize()
       : new THREE.Vector3(0, 12, 17).normalize();
-    const distance = mode === "hyperbolic" ? wholeArena ? 246 : 18 : 20.8;
+    const distance = mode === "hyperbolic" ? wholeArena ? 28 : 26 : 20.8;
     this.camera.position.copy(direction.multiplyScalar(distance));
     this.controls.update();
   }
@@ -282,7 +274,7 @@ export class BoardView {
   private rebuildRoutes(): void {
     clearGroup(this.routeLayer);
     clearGroup(this.markerLayer);
-    if (!this.selectedPieceId || !this.state || !this.interactive) return;
+    if (!this.selectedPieceId || !this.state) return;
     const selected = this.state.pieces.find((piece) => piece.id === this.selectedPieceId);
     if (!selected) return;
     const hoveredTarget = this.focusedTileId;
@@ -307,6 +299,7 @@ export class BoardView {
         );
         marker.position.copy(this.getTilePosition(destination)).addScaledVector(this.getTileNormal(destination), 0.22);
         marker.scale.setScalar(localScale(destination, this.renderMode) * 0.75);
+        marker.userData.tileId = move.toTileId;
         this.markerLayer.add(marker);
       }
     }
@@ -505,7 +498,7 @@ export class BoardView {
         -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
       );
       this.raycaster.setFromCamera(this.pointer, this.camera);
-      const hits = this.raycaster.intersectObjects([this.pieceLayer, this.tileLayer], true);
+      const hits = this.raycaster.intersectObjects([this.pieceLayer, this.markerLayer, this.tileLayer], true);
       const hit = hits.find((item) => findData(item.object, "tileId"));
       if (!hit) return;
       const tileId = findData(hit.object, "tileId");
@@ -680,14 +673,6 @@ function geodesicPoint(first: Vector3, second: Vector3, progress: number): Vecto
     y: firstScale * first.y + secondScale * second.y,
     z: firstScale * first.z + secondScale * second.z,
   };
-}
-
-function toDisplayPoint(point: Vector3): THREE.Vector3 {
-  return new THREE.Vector3(point.x, point.z - 1, point.y);
-}
-
-function displayNormal(point: Vector3): THREE.Vector3 {
-  return new THREE.Vector3(-point.x / point.z, 1, -point.y / point.z).normalize();
 }
 
 function localScale(visual: TileVisual, mode: GeometryMode): number {
