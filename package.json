@@ -1,0 +1,28 @@
+{
+  "name": "curvature-chess",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "server": "node --disable-warning=ExperimentalWarning --experimental-strip-types src/server/index.ts",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/*.test.ts",
+    "start": "npm run build && npm run server"
+  },
+  "dependencies": {
+    "three": "^0.186.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/three": "^0.185.3",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.13"
+  }
+}
