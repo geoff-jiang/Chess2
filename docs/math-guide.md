@@ -279,32 +279,42 @@ The standard position key uses the first four FEN fields. A third occurrence end
 
 ## 10. The visible bowl is a custom projection
 
-Given model p = (x,y,z), the display code computes
+The local view first applies a Lorentz boost to bring the selected tile center f to (0,0,1). Write the spatial dot product as b = f_x p_x + f_y p_y. Then
+
+\[
+p'_x=p_x+f_x\left(\frac{b}{f_z+1}-p_z\right),\quad
+p'_y=p_y+f_y\left(\frac{b}{f_z+1}-p_z\right),\quad
+p'_z=f_zp_z-b.
+\]
+
+This is an isometry: L(p',q') = L(p,q). It enlarges a selected outer tile through a change of viewpoint, without changing distances, tile IDs, adjacency, or moves. The whole-arena view uses f = (0,0,1). The camera frames a local neighborhood or the selected route; distant tiles remain compressed. Tests check all 109 possible focus tiles and verify identical focused center-to-edge size.
+
+Given the recentered model point p = (x,y,z), the display code computes
 
 \[
 \rho=\sqrt{x^2+y^2},\quad s=\operatorname{asinh}\rho,
-\quad r_d=8\tanh(s/2.5),
+\quad r_d=8\tanh(s/4),
 \]
 
 then
 
 \[
-(X,Y,Z)=\left(x\frac{r_d}{\rho},\;0.035r_d^2,\;y\frac{r_d}{\rho}\right).
+(X,Y,Z)=\left(x\frac{r_d}{\rho},\;0.012r_d^2,\;y\frac{r_d}{\rho}\right).
 \]
 
 The origin is handled separately to avoid division by zero. Model z is the Lorentz coordinate; display Y is ordinary scene height. Model x,y become display X,Z.
 
-Angles around the center are preserved. Radius is compressed: r_d < 8, so Y < 2.24. Its derivative is
+Angles around the center are preserved. Radius is compressed: r_d < 8, so Y < 0.768. Its derivative is
 
 \[
-\frac{dr_d}{ds}=3.2\operatorname{sech}^2(s/2.5).
+\frac{dr_d}{ds}=2\operatorname{sech}^2(s/4).
 \]
 
-Farther radial distances occupy progressively less visible space. That contributes to small outside tiles and clipping risks. The 8, 2.5, and 0.035 constants are presentation choices.
+Farther radial distances occupy progressively less visible space. That contributes to small distant tiles; the local-view boost moves the active neighborhood out of that compressed region. The 8, 4, and 0.012 constants are presentation choices.
 
 This differs from the standard Poincaré projection used for anchors, whose radius is tanh(s/2). The display is neither asserted to preserve all distances nor to be conformal.
 
-The displayed surface satisfies Y = a(X²+Z²), a = 0.035. Its Euclidean Gaussian curvature is
+The displayed surface satisfies Y = a(X²+Z²), a = 0.012. Its Euclidean Gaussian curvature is
 
 \[
 K_{\mathrm{display}}=
@@ -336,7 +346,7 @@ Ordinary model-coordinate averaging is generally not on the hyperboloid. The imp
 
 Each tile has 8 samples per edge, 32 perimeter samples, and 6 radial rings. Its mesh contains 193 top vertices and 32 bottom perimeter vertices: 225 total. It has 352 top triangles and 64 side triangles: 416 total, without a bottom cap. Across 109 tiles that is 45,344 tile triangles, excluding other scene objects.
 
-These triangles approximate the continuous projected surface. More samples improve shape accuracy but increase processing and rendering costs. Route indicators are projected sample polylines, not exact continuous geodesic drawings.
+These triangles approximate the continuous projected surface. More samples improve shape accuracy but increase processing and rendering costs. Route indicators are projected sample polylines, not exact continuous geodesic drawings. Only the inspected route is shown, with arrows, intermediate landing rings, guide dots, and a translucent arrival piece. Curved moves require explicit confirmation after inspection.
 
 ## 12. Normals, piece orientation, and scale
 
@@ -429,7 +439,7 @@ Standard move generation can be checked with **perft**, counting leaves in the l
 P(S,0)=1,\qquad P(S,d)=\sum_{m\in\mathcal L(S)}P(T(S,m),d-1).
 \]
 
-The current adapter test checks 20 opening moves and 400 depth-two leaves. The current suite has 29 tests, including special rules and curvature behavior. Tests provide evidence for covered cases, not a proof of every possible position or of strategic balance.
+The current adapter test checks 20 opening moves and 400 depth-two leaves. The current suite has 33 tests, including special rules and curvature behavior. Tests provide evidence for covered cases, not a proof of every possible position or of strategic balance.
 
 ## 16. Judge questions and accurate answers
 

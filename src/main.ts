@@ -4,6 +4,7 @@ import { fenFromPieces, PROMOTIONS, standardPosition } from "./shared/standard-c
 import { ARENA } from "./shared/geometry.ts";
 import { capitalize, pieceLetter } from "./shared/labels.ts";
 import { BoardView } from "./view/board-view.ts";
+import { explainMove, movementHelp, tileName } from "./view/move-explanation.ts";
 
 interface RoomSnapshot {
   type: "snapshot";
@@ -38,7 +39,8 @@ app.innerHTML = `
       <section class="board-stage" aria-label="Three-dimensional game board">
         <div id="board-canvas" tabindex="0" role="application" aria-label="Interactive 3D chessboard. Drag to rotate, right-drag to pan, and use the wheel to zoom."></div>
         <div class="scene-meta"><span class="scene-dot"></span><span id="scene-title" class="scene-title">A preview of the arena</span><span id="scene-coordinates" class="scene-coordinates">109 tiles · five around a corner</span></div>
-        <div class="stage-actions"><button id="overview-view" class="ghost-button overview-button" type="button" hidden>◎ <span>Whole arena</span></button><button id="reset-view" class="ghost-button" type="button" aria-label="Reset camera view">↺ <span>Reset view</span></button></div>
+        <div class="stage-actions"><button id="focus-piece" class="ghost-button" type="button" hidden>⌖ <span>Focus piece</span></button><button id="overview-view" class="ghost-button overview-button" type="button" hidden>◎ <span>Whole arena</span></button><button id="reset-view" class="ghost-button" type="button" aria-label="Reset camera view">↺ <span>Reset view</span></button></div>
+        <div id="focus-caption" class="focus-caption" role="status" hidden></div>
         <div id="preview-banner" class="preview-banner" hidden><strong id="preview-title">Preview only</strong><span id="preview-copy">The shared board has not changed.</span><button id="cancel-preview" class="preview-cancel" type="button">Cancel</button></div>
         <div class="camera-hint"><kbd>Drag</kbd> orbit &nbsp; <kbd>Right-drag</kbd> pan<br><kbd>Scroll / pinch</kbd> zoom</div>
         <div id="selected-readout" class="selected-readout" hidden></div>
@@ -99,6 +101,14 @@ app.innerHTML = `
             <p id="opening-guide-copy" class="opening-guide-copy"></p>
           </section>
           <section class="rail-section" aria-labelledby="moves-heading"><div class="section-heading"><span id="moves-heading">Pieces and destinations</span></div><div id="piece-choices" class="piece-choices"></div><div id="destination-choices" class="destination-choices"></div></section>
+          <section id="move-inspector" class="move-inspector" aria-label="Curved move preview" hidden>
+            <strong id="move-inspector-title">Plan your move</strong>
+            <p id="movement-help"></p>
+            <p class="move-legend">Green ring: move · Red ring: capture<br>Arrows: route · Faded piece: arrival</p>
+            <p id="move-detail" role="status" aria-live="polite"></p>
+            <button id="show-route" class="outline-button" type="button" hidden>Show entire route</button>
+            <div class="move-actions"><button id="confirm-move" class="secondary-button" type="button" disabled>Choose a destination</button><button id="cancel-move" class="outline-button" type="button" hidden>Cancel</button></div>
+          </section>
 
           <section class="rail-section" aria-labelledby="shadow-heading">
             <div class="section-heading"><span id="shadow-heading">In the shadow</span><span class="section-caption">Extra tiles · inactive in flat mode</span></div>
@@ -134,6 +144,7 @@ let rematchRequestedByYou = false;
 let previewMode: GeometryMode | null = null;
 let guidedStep: "shift" | "inspect" | "route" | "done" | null = null;
 let selectedPieceId: string | null = null;
+let plannedDestination: string | null = null;
 let pendingAction = false;
 let clientConnectionStatus: "offline" | "connecting" | "connected" = "offline";
 let currentSocket: WebSocket | null = null;
@@ -164,9 +175,66 @@ function displayPosition(state: GameState, mode: GeometryMode): GameState {
 }
 
 const boardElement = element<HTMLDivElement>("board-canvas");
-const boardView = new BoardView(boardElement, onTilePicked);
+const boardView = new BoardView(boardElement, onTilePicked, (tileId) => previewMove(tileId), (tileId) => {
+  const caption = element<HTMLDivElement>("focus-caption");
+  caption.hidden = tileId === null;
+  caption.textContent = tileId ? `Local view · ${tileName(tileId)} · Whole arena restores the overview` : "";
+});
 boardView.setResetButton(element<HTMLButtonElement>("reset-view"));
 element<HTMLButtonElement>("overview-view").addEventListener("click", () => boardView.showWholeArena());
+element<HTMLButtonElement>("focus-piece").addEventListener("click", () => {
+  const piece = gameState?.pieces.find((candidate) => candidate.id === selectedPieceId);
+  if (piece) boardView.focusTile(piece.tileId);
+});
+element<HTMLButtonElement>("confirm-move").addEventListener("click", () => {
+  if (plannedDestination) commitMove(plannedDestination);
+});
+element<HTMLButtonElement>("cancel-move").addEventListener("click", clearMovePreview);
+element<HTMLButtonElement>("show-route").addEventListener("click", () => boardView.showRoute());
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !promotionDialog.open) clearMovePreview();
+});
+
+function clearMovePreview(): void { plannedDestination = null; previewMove(null); }
+
+function previewMove(tileId: string | null): void {
+  if (!gameState) return;
+  const mode = previewMode ?? gameState.mode;
+  const selected = gameState.pieces.find((piece) => piece.id === selectedPieceId);
+  const state = displayPosition(gameState, mode);
+  const moves = selected ? getLegalMoves(state, selected.id) : [];
+  // Once chosen, keep the drawn move and the confirmation button in agreement.
+  const move = moves.find((candidate) => candidate.toTileId === plannedDestination)
+    ?? moves.find((candidate) => candidate.toTileId === tileId);
+  boardView.previewDestination(move?.toTileId ?? null);
+  const inspector = element<HTMLElement>("move-inspector");
+  inspector.hidden = mode !== "hyperbolic" || !selected;
+  if (inspector.hidden || !selected) return;
+  element<HTMLElement>("move-inspector-title").textContent = `${capitalize(selected.type)} · ${tileName(selected.tileId)}`;
+  element<HTMLElement>("movement-help").textContent = movementHelp(selected);
+  element<HTMLElement>("move-detail").textContent = move ? explainMove(state, selected, move)
+    : moves.length ? "Hover or focus a destination to trace its route. Select it, then press Move to confirm."
+      : "No legal moves: routes may be blocked, reach the boundary, or expose your king. Try another piece or preview a geometry shift.";
+  const confirm = element<HTMLButtonElement>("confirm-move");
+  confirm.disabled = !plannedDestination || !!previewMode || !canSubmitAction();
+  confirm.textContent = previewMode ? "Commit the shift to move" : plannedDestination ? `Move to ${tileName(plannedDestination)}` : "Choose a destination";
+  element<HTMLButtonElement>("cancel-move").hidden = !plannedDestination;
+  element<HTMLButtonElement>("show-route").hidden = !move;
+  for (const button of element<HTMLElement>("destination-choices").querySelectorAll<HTMLButtonElement>("button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.tileId === plannedDestination));
+  }
+}
+
+function commitMove(tileId: string): void {
+  if (!gameState || !selectedPieceId || !canSubmitAction() || previewMode) return;
+  const moves = getLegalMoves(gameState, selectedPieceId).filter((move) => move.toTileId === tileId);
+  if (!moves.length) { clearMovePreview(); return; }
+  const action = { kind: "move" as const, pieceId: selectedPieceId, toTileId: tileId };
+  if (moves.some((move) => move.promotion)) {
+    pendingPromotion = { action, ply: gameState.history.length };
+    promotionDialog.showModal();
+  } else submitAction(action);
+}
 
 element<HTMLButtonElement>("create-room").addEventListener("click", () => {
   element<HTMLParagraphElement>("form-error").textContent = "";
@@ -219,6 +287,7 @@ element<HTMLButtonElement>("flat-preview").addEventListener("click", () => toggl
 element<HTMLButtonElement>("hyperbolic-preview").addEventListener("click", () => togglePreview("hyperbolic"));
 element<HTMLButtonElement>("cancel-preview").addEventListener("click", () => {
   previewMode = null;
+  plannedDestination = null;
   render();
 });
 
@@ -279,19 +348,21 @@ function onTilePicked(tileId: string, pieceId: string | null): void {
   const displayState = displayPosition(gameState, displayMode);
   const selected = gameState.pieces.find((piece) => piece.id === selectedPieceId);
   if (selected && getLegalMoves(displayState, selected.id).some((move) => move.toTileId === tileId)) {
+    if (displayMode === "hyperbolic") {
+      plannedDestination = tileId;
+      previewMove(tileId);
+      element<HTMLElement>("move-inspector").scrollIntoView({ block: "nearest" });
+      return;
+    }
     if (previewMode) {
       showToast("Commit the shift before moving a piece.");
       return;
     }
-    const action = { kind: "move" as const, pieceId: selected.id, toTileId: tileId };
-    if (getLegalMoves(gameState, selected.id).some((move) => move.toTileId === tileId && move.promotion)) {
-      pendingPromotion = { action, ply: gameState.history.length };
-      promotionDialog.showModal();
-    } else submitAction(action);
+    commitMove(tileId);
     return;
   }
 
-  const piece = pieceId ? gameState.pieces.find((candidate) => candidate.id === pieceId) : undefined;
+  const piece = gameState.pieces.find((candidate) => pieceId ? candidate.id === pieceId : candidate.tileId === tileId);
   if (selected && piece?.side !== gameState.activePlayer && tileId !== selected.tileId) {
     showToast("That tile is not a legal destination for this piece.");
     return;
@@ -304,13 +375,15 @@ function onTilePicked(tileId: string, pieceId: string | null): void {
   if (guidedStep === "inspect" && selectedPieceId && gameState.mode === "hyperbolic") {
     guidedStep = "route";
   }
-  boardView.focusTile(tileId);
+  plannedDestination = null;
   render();
+  if (selectedPieceId) boardView.focusTile(tileId);
 }
 
 function submitAction(action: GameAction): void {
   if (!gameState || !canSubmitAction() || previewMode) return;
   selectedPieceId = null;
+  plannedDestination = null;
   if (matchKind === "local") {
     try {
       gameState = applyAction(gameState, action);
@@ -338,6 +411,7 @@ function submitAction(action: GameAction): void {
 
 function togglePreview(mode: GeometryMode): void {
   if (!gameState) return;
+  plannedDestination = null;
   if (mode === "flat" && gameState.mode !== "flat") {
     try { standardPosition(displayPosition(gameState, mode), ARENA); }
     catch { showToast("Return kings and unpromoted pawns to valid anchor squares before previewing flat chess."); return; }
@@ -443,12 +517,14 @@ function render(): void {
   if (pendingPromotion && (state.status.kind !== "playing" || pendingPromotion.ply !== state.history.length)) cancelPromotion();
   const selectedPiece = gameState?.pieces.find((piece) => piece.id === selectedPieceId) ?? null;
   const selectedMoves = gameState && selectedPiece ? getLegalMoves(displayState, selectedPiece.id) : [];
+  if (!selectedPiece || !selectedMoves.some((move) => move.toTileId === plannedDestination)) plannedDestination = null;
   const isPlayable = canSubmitAction();
 
   const guidePiece = guidedStep === "inspect" ? gameState?.pieces.find((piece) => piece.side === gameState!.activePlayer && getLegalMoves(gameState!, piece.id).length > 0) : undefined;
   boardView.setTutorialTarget(guidePiece?.tileId ?? null);
   boardView.update(displayState, displayMode, selectedPieceId, selectedMoves, isPlayable);
   element<HTMLButtonElement>("overview-view").hidden = displayMode !== "hyperbolic";
+  element<HTMLButtonElement>("focus-piece").hidden = displayMode !== "hyperbolic" || !selectedPiece;
   element<HTMLElement>("scene-title").textContent = gameState ? `${displayMode === "hyperbolic" ? "Curved" : "Flat"} geometry` : "A preview of the arena";
   element<HTMLElement>("scene-coordinates").textContent = displayMode === "flat" ? "8 × 8 anchors · familiar routes" : "109 tiles · five around a corner";
 
@@ -477,6 +553,7 @@ function render(): void {
   renderHistory(gameState.history);
   renderFinish(gameState);
   renderMoveChoices(displayState, selectedPiece, selectedMoves);
+  previewMove(null);
   const selectedReadout = element<HTMLDivElement>("selected-readout");
   if (selectedPiece) {
     const square = ARENA.flatSquareByTile.get(selectedPiece.tileId);
@@ -497,7 +574,7 @@ function renderMoveChoices(state: GameState, selected: Piece | null, moves: Retu
   for (const piece of state.pieces.filter((candidate) => candidate.side === state.activePlayer && !isShadow(candidate, state.mode))) {
     const button = document.createElement("button");
     button.type = "button";
-    const location = ARENA.flatSquareByTile.get(piece.tileId)?.toUpperCase() ?? piece.tileId;
+    const location = tileName(piece.tileId);
     button.textContent = `${pieceLetter(piece.type)} ${location}`;
     button.setAttribute("aria-label", `${capitalize(piece.type)} at ${location}`);
     button.setAttribute("aria-pressed", String(piece.id === selected?.id));
@@ -505,12 +582,19 @@ function renderMoveChoices(state: GameState, selected: Piece | null, moves: Retu
     button.addEventListener("click", () => onTilePicked(piece.tileId, piece.id));
     choices.append(button);
   }
-  if (!selected) { destinations.textContent = "Select a piece to inspect legal destinations."; return; }
+  if (!selected) { destinations.textContent = state.mode === "hyperbolic" ? "Select a piece to enlarge its neighborhood. Then choose a destination to preview the route." : "Select a piece to inspect legal destinations."; return; }
   if (!moves.length) { destinations.textContent = "No legal destinations in this geometry."; return; }
   for (const tileId of new Set(moves.map((move) => move.toTileId))) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = `To ${ARENA.flatSquareByTile.get(tileId)?.toUpperCase() ?? tileId}`;
+    const capture = state.pieces.find((piece) => piece.tileId === tileId);
+    button.textContent = `${capture ? "Capture" : "To"} ${tileName(tileId)}`;
+    button.dataset.tileId = tileId;
+    button.setAttribute("aria-pressed", String(tileId === plannedDestination));
+    button.addEventListener("pointerenter", () => previewMove(tileId));
+    button.addEventListener("pointerleave", () => previewMove(null));
+    button.addEventListener("focus", () => previewMove(tileId));
+    button.addEventListener("blur", () => previewMove(null));
     button.disabled = !canSubmitAction();
     button.addEventListener("click", () => onTilePicked(tileId, null));
     destinations.append(button);
@@ -624,7 +708,7 @@ function renderOpeningGuide(): void {
   } else {
     step.textContent = "Guided opening · 3 of 3";
     title.textContent = "Follow the route";
-    copy.textContent = "Choose a highlighted destination. Compare it with the flat preview to see which routes geometry opens.";
+    copy.textContent = "Choose a highlighted destination to trace the route. Press Move to confirm, or cancel and explore another option.";
   }
 }
 

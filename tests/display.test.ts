@@ -1,27 +1,46 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ARENA } from "../src/shared/geometry.ts";
-import { toDisplayPoint } from "../src/view/hyperbolic-display.ts";
+import { ARENA, edgeMidpoint, type Vector3 } from "../src/shared/geometry.ts";
+import { centerOn, displayNormal, toDisplayPoint } from "../src/view/hyperbolic-display.ts";
 
-test("the curved display fits the arena without needle-shaped outer tiles", () => {
-  const center = ARENA.tiles.get(ARENA.centerTileId)!;
-  const centerEdge = toDisplayPoint(center.vertices[0]).distanceTo(toDisplayPoint(center.vertices[1]));
-  let largestRadius = 0;
-  let largestEdge = 0;
-  let largestOuterSpread = 0;
-  for (const tile of ARENA.tiles.values()) {
-    const vertexRadii: number[] = [];
-    for (let index = 0; index < tile.vertices.length; index += 1) {
-      const first = toDisplayPoint(tile.vertices[index]);
-      const second = toDisplayPoint(tile.vertices[(index + 1) % tile.vertices.length]);
-      largestRadius = Math.max(largestRadius, first.length());
-      largestEdge = Math.max(largestEdge, first.distanceTo(second));
-      vertexRadii.push(Math.hypot(first.x, first.z));
+const dot = (a: Vector3, b: Vector3) => a.x * b.x + a.y * b.y - a.z * b.z;
+
+test("local viewing preserves hyperbolic distances and centers every tile, including the boundary", () => {
+  for (const focus of ARENA.tiles.values()) {
+    assert.ok(toDisplayPoint(focus.center, focus.center).length() < 1e-9);
+    for (const tile of ARENA.tiles.values()) {
+      const a = centerOn(tile.center, focus.center);
+      assert.ok(Math.abs(dot(a, a) + 1) < 1e-7);
+      for (const link of tile.neighbors) {
+        if (!link) continue;
+        const b = ARENA.tiles.get(link.tileId)!.center;
+        assert.ok(Math.abs(dot(a, centerOn(b, focus.center)) - dot(tile.center, b)) < 1e-7);
+      }
     }
-    if (tile.ring === 4) largestOuterSpread = Math.max(largestOuterSpread, Math.max(...vertexRadii) - Math.min(...vertexRadii));
   }
+});
 
-  assert.ok(largestRadius < 16, `outer radius ${largestRadius.toFixed(1)} exceeds the readable board extent`);
-  assert.ok(largestEdge / centerEdge < 8, `outer edges are ${(largestEdge / centerEdge).toFixed(1)} times the central edge`);
-  assert.ok(largestOuterSpread / centerEdge < 0.7, `outer tile radial depth is ${(largestOuterSpread / centerEdge).toFixed(1)} central edges`);
+test("every focused tile has the same usable center-to-edge size as the original center tile", () => {
+  const root = ARENA.tiles.get(ARENA.centerTileId)!;
+  const baseline = toDisplayPoint(edgeMidpoint(root.vertices, 0)).length();
+  assert.ok(baseline > 1, "focused tile must leave room for a readable piece");
+  for (const tile of ARENA.tiles.values()) {
+    for (let edge = 0; edge < 4; edge++) {
+      const radius = toDisplayPoint(edgeMidpoint(tile.vertices, edge), tile.center).length();
+      assert.ok(Math.abs(radius - baseline) < 1e-8, `${tile.id} edge ${edge} shrinks when focused`);
+    }
+    assert.ok(Math.abs(displayNormal(tile.center, tile.center).y - 1) < 1e-9);
+  }
+});
+
+test("overview and focused projections stay finite and bounded", () => {
+  for (const focus of [undefined, ...[...ARENA.tiles.values()].map((tile) => tile.center)]) {
+    for (const tile of ARENA.tiles.values()) for (const vertex of tile.vertices) {
+      const point = toDisplayPoint(vertex, focus);
+      assert.ok(Number.isFinite(point.x + point.y + point.z));
+      assert.ok(Math.hypot(point.x, point.z) < 8);
+      assert.ok(point.y < 0.77);
+      assert.ok(Math.abs(displayNormal(vertex, focus).length() - 1) < 1e-10);
+    }
+  }
 });

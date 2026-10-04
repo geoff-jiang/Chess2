@@ -25,7 +25,10 @@ Open the Vite URL printed by `npm run dev`. For a production build, `npm start` 
 - Choose **Try a local match on this device** to play both sides without a second browser.
 - Choose **Explore curved routes** to preview a geometry shift, commit it, and inspect newly opened routes.
 - Drag to orbit, right-drag to pan, and use the wheel or a pinch gesture to zoom. **Reset view** restores that browser's camera. Camera state is never sent to the server.
-- Select a piece to reveal its available destinations and routes. Select a destination to move.
+- In curved mode, selecting a piece recenters its neighborhood into a readable local view, including pieces at the outer edge. **Whole arena** returns to the overview; **Focus piece** restores the close view. These controls only affect your camera/projection.
+- Green destination rings mean moves; red rings mean captures. Hover or keyboard-focus a destination to trace one route at a time. Guide dots show crossed tiles; small route rings show intermediate landing tiles. A faded piece shows the arrival position, and a selected pawn has a forward arrow.
+- In curved mode, select a destination, inspect the explanation, then press **Move** to confirm. **Cancel** or Escape clears it. **Show entire route** frames a long route. Flat moves still complete when their destination is selected.
+- The board stays visible while the controls scroll independently, including on narrow screens.
 - Choose the other geometry to preview it locally. **Commit** spends the current turn and changes the shared board.
 - A geometry shift starts a two-piece-move lock. After each player has made one piece move, another shift is available.
 - Checkmate wins. Kings cannot be captured or left in check. A safe geometry shift counts as a possible escape in Curvature matches. Three visits to the same full position draw. The finish panel offers a rematch; online, both players must request one.
@@ -53,7 +56,7 @@ Choose **Standard chess** for an orthodox match without shifts. It also detects 
 
 ## Geometry and anchors
 
-The rules engine generates the arena by reflecting a regular hyperbolic square across its edges in the hyperboloid model. Breadth-first face traversal creates the central tile plus four rings: 109 tiles in total. Vertex coordinates build the corner-neighbor graph; rook routes use edge adjacency, not distances in the rendered scene. The 3D board compresses hyperboloid radial distance into a curved display surface so outer tiles remain readable. This visual projection does not change the rules or claim to preserve Euclidean distances.
+The rules engine generates the arena by reflecting a regular hyperbolic square across its edges in the hyperboloid model. Breadth-first face traversal creates the central tile plus four rings: 109 tiles in total. Vertex coordinates build the corner-neighbor graph; rook routes use edge adjacency, not distances in the rendered scene. The overview compresses hyperboloid radial distance into a shallow display surface. Selecting a piece applies a Lorentz boost that centers its tile before projection, giving every selected tile the same local scale as the central tile. This preserves intrinsic distances and the movement graph. Distant tiles remain compressed for context; the overview is for orientation and the local view is for play.
 
 The 64 anchors use 32 opposite noncentral tile pairs. Version 2 uses a deterministic greedy projection match to keep the opening armies in opposing regions while retaining exact half-turn pairing. This preserves broad rank/file locality, not grid distances or all neighbors. Regression tests freeze selected mappings and verify that the full opening can shift without exposing either king. Version-1 matches are incompatible: restart the server and begin fresh matches when upgrading.
 

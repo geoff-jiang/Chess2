@@ -5,6 +5,8 @@ import { ARENA, edgeMidpoint, squareCoordinates, type HyperbolicTile, type Squar
 import { pieceLetter } from "../shared/labels.ts";
 import { displayNormal, toDisplayPoint } from "./hyperbolic-display.ts";
 import { overviewDistance } from "./camera-fit.ts";
+import { pawnForwardEdge } from "../shared/curvature-moves.ts";
+import { routeLandings } from "./move-explanation.ts";
 
 const EDGE_STEPS = 8;
 const EDGE_POINTS = EDGE_STEPS * 4;
@@ -40,7 +42,6 @@ export class BoardView {
   private readonly routeLayer = new THREE.Group();
   private readonly markerLayer = new THREE.Group();
   private readonly tileVisuals = new Map<string, TileVisual>();
-  private readonly pieceMeshes = new Map<string, THREE.Group>();
   private readonly pieceAssets = new Map<string, THREE.Group>();
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
@@ -55,13 +56,20 @@ export class BoardView {
   private morphFrom: GeometryMode = "flat";
   private morphStartedAt = 0;
   private isMorphing = false;
-  private focusedTileId: string | null = null;
   private pressedAt: { x: number; y: number; button: number } | null = null;
-  private resetButton: HTMLButtonElement | null = null;
   private overview = true;
-  private wholeArena = false;
+  private projectionCenter: Vector3 | undefined;
+  private pendingFocusId: string | null = null;
+  private previewTileId: string | null = null;
+  private hoveredTileId: string | null = null;
+  private framedRadius: number | null = null;
 
-  constructor(container: HTMLElement, onTilePicked: (tileId: string, pieceId: string | null) => void) {
+  constructor(
+    container: HTMLElement,
+    onTilePicked: (tileId: string, pieceId: string | null) => void,
+    private readonly onTileHovered: (tileId: string | null) => void = () => {},
+    private readonly onFocusChanged: (tileId: string | null) => void = () => {},
+  ) {
     this.onTilePicked = onTilePicked;
     this.scene.background = new THREE.Color("#dce4e4");
     this.scene.fog = new THREE.Fog("#dce4e4", 150, 650);
@@ -90,7 +98,7 @@ export class BoardView {
     this.controls.maxDistance = 500;
     this.controls.minPolarAngle = 0.08;
     this.controls.maxPolarAngle = Math.PI * 0.49;
-    this.controls.addEventListener("start", () => { this.overview = false; });
+    this.controls.addEventListener("start", () => { this.overview = false; this.framedRadius = null; });
     this.setOverviewPose("flat");
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -101,16 +109,52 @@ export class BoardView {
   }
 
   setResetButton(button: HTMLButtonElement): void {
-    this.resetButton = button;
     button.addEventListener("click", () => {
-      this.focusedTileId = null;
-      this.setOverviewPose(this.renderMode);
+      this.showWholeArena();
     });
   }
 
   showWholeArena(): void {
-    this.focusedTileId = null;
-    this.setOverviewPose("hyperbolic", true);
+    this.pendingFocusId = null;
+    this.reproject();
+    this.onFocusChanged(null);
+    this.setOverviewPose(this.renderMode);
+  }
+
+  previewDestination(tileId: string | null): void {
+    const next = this.legalMoves.some((move) => move.toTileId === tileId) ? tileId : null;
+    if (next === this.previewTileId) return;
+    this.previewTileId = next;
+    this.applyTileStyles();
+    this.rebuildRoutes();
+  }
+
+  showRoute(): void {
+    const move = this.legalMoves.find((candidate) => candidate.toTileId === this.previewTileId);
+    if (!move || this.isMorphing) return;
+    const points = move.route.flatMap((tileId) => {
+      const visual = this.tileVisuals.get(tileId)!;
+      return this.renderMode === "flat" ? visual.flatBoundary : visual.hyperBoundary;
+    });
+    const center = new THREE.Box3().setFromPoints(points).getCenter(new THREE.Vector3());
+    const radius = Math.max(...points.map((point) => point.distanceTo(center))) + 0.8;
+    this.framedRadius = radius;
+    this.overview = false;
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).add(new THREE.Vector3(0, 1, 0.22).normalize().multiplyScalar(overviewDistance(radius, this.camera.fov, this.camera.aspect)));
+    this.controls.update();
+  }
+
+  private reproject(focus?: Vector3): void {
+    this.projectionCenter = focus;
+    for (const [tileId, visual] of this.tileVisuals) {
+      const hyper = hyperbolicTile(ARENA.tiles.get(tileId)!, focus);
+      visual.hyperBoundary = hyper.boundary;
+      visual.hyperGrid = hyper.grid;
+      visual.hyperCenter = hyper.center;
+      visual.hyperNormal = hyper.normal;
+    }
+    if (!this.isMorphing) this.updateTilePositions(1);
   }
 
   setTutorialTarget(tileId: string | null): void {
@@ -133,9 +177,12 @@ export class BoardView {
       this.pieceLayer.visible = false;
       this.routeLayer.visible = false;
       this.markerLayer.visible = false;
-      this.focusedTileId = null;
+      this.pendingFocusId = null;
+      if (mode === "hyperbolic") this.reproject();
+      this.onFocusChanged(null);
       this.setOverviewPose(mode);
     }
+    if (selectedPieceId !== this.selectedPieceId || state !== this.state) this.previewTileId = null;
     this.state = state;
     this.selectedPieceId = selectedPieceId;
     this.legalMoves = legalMoves;
@@ -148,31 +195,39 @@ export class BoardView {
   focusTile(tileId: string): void {
     const visual = this.tileVisuals.get(tileId);
     if (!visual) return;
+    if (this.isMorphing) { this.pendingFocusId = tileId; return; }
     this.overview = false;
-    this.focusedTileId = tileId;
+    if (this.renderMode === "hyperbolic") {
+      this.reproject(ARENA.tiles.get(tileId)!.center);
+      this.onFocusChanged(tileId);
+      this.framedRadius = 4.2;
+    }
     const position = this.getTilePosition(visual);
     const offset = this.camera.position.clone().sub(this.controls.target);
     const desiredDistance = this.renderMode === "hyperbolic"
-      ? overviewDistance(Math.max(1, localScale(visual, this.renderMode) * 2), this.camera.fov, this.camera.aspect)
+      ? overviewDistance(4.2, this.camera.fov, this.camera.aspect)
       : offset.length();
+    if (this.renderMode === "hyperbolic") offset.set(0, 1, 0.22);
     offset.setLength(desiredDistance);
     this.camera.position.copy(position).add(offset);
     this.controls.target.copy(position);
     this.controls.update();
   }
 
-  private setOverviewPose(mode: GeometryMode, wholeArena = false): void {
+  private setOverviewPose(mode: GeometryMode): void {
     this.overview = true;
-    this.wholeArena = wholeArena;
+    this.framedRadius = null;
     const bounds = new THREE.Box3();
+    const boundary: THREE.Vector3[] = [];
     for (const [tileId, visual] of this.tileVisuals) {
       if (mode === "flat" && !ARENA.flatSquareByTile.has(tileId)) continue;
-      for (const point of mode === "flat" ? visual.flatBoundary : visual.hyperBoundary) bounds.expandByPoint(point);
+      for (const point of mode === "flat" ? visual.flatBoundary : visual.hyperBoundary) { bounds.expandByPoint(point); boundary.push(point); }
     }
     const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+    sphere.radius = Math.max(...boundary.map((point) => point.distanceTo(sphere.center)));
     this.controls.target.copy(sphere.center);
     const direction = mode === "hyperbolic"
-      ? wholeArena ? new THREE.Vector3(0, 0.97, 0.25).normalize() : new THREE.Vector3(0, 0.72, 0.69).normalize()
+      ? new THREE.Vector3(0, 1, 0.22).normalize()
       : new THREE.Vector3(0, 12, 17).normalize();
     const distance = overviewDistance(sphere.radius + 1, this.camera.fov, this.camera.aspect);
     this.controls.maxDistance = Math.max(500, distance * 2);
@@ -243,7 +298,7 @@ export class BoardView {
     }
   }
 
-  private makeTileLabel(square: SquareId): THREE.Sprite {
+  private makeTileLabel(square: string): THREE.Sprite {
     const canvas = document.createElement("canvas");
     canvas.width = 128;
     canvas.height = 128;
@@ -274,7 +329,8 @@ export class BoardView {
     const selected = this.state.pieces.find((piece) => piece.id === this.selectedPieceId);
     const activeKing = this.state.pieces.find((piece) => piece.type === "king" && piece.side === this.state!.activePlayer);
     const destinations = new Set(this.legalMoves.map((move) => move.toTileId));
-    const routeTiles = new Set(this.legalMoves.flatMap((move) => move.route));
+    const activeRoute = this.legalMoves.find((move) => move.toTileId === this.previewTileId);
+    const routeTiles = new Set(activeRoute?.route ?? []);
     const kingThreatened = activeKing ? isInCheck(this.state, activeKing.side) : false;
     for (const [tileId, visual] of this.tileVisuals) {
       const isSelected = selected?.tileId === tileId;
@@ -294,39 +350,91 @@ export class BoardView {
   private rebuildRoutes(): void {
     clearGroup(this.routeLayer);
     clearGroup(this.markerLayer);
-    if (!this.selectedPieceId || !this.state) return;
-    const selected = this.state.pieces.find((piece) => piece.id === this.selectedPieceId);
+    const selected = this.state?.pieces.find((piece) => piece.id === this.selectedPieceId);
     if (!selected) return;
-    const hoveredTarget = this.focusedTileId;
-
-    for (const move of this.legalMoves) {
-      const points = routeDisplayPoints(move.route, this.renderMode);
-      if (points.length < 2) continue;
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const active = move.toTileId === hoveredTarget;
-      const material = this.renderMode === "hyperbolic"
-        ? new THREE.LineDashedMaterial({ color: active ? "#be613a" : "#527f80", dashSize: active ? 0.27 : 0.18, gapSize: active ? 0.12 : 0.22, transparent: true, opacity: active ? 0.95 : 0.55, linewidth: active ? 2 : 1 })
-        : new THREE.LineBasicMaterial({ color: active ? "#be613a" : "#527f80", transparent: true, opacity: active ? 0.87 : 0.48, linewidth: active ? 2 : 1 });
-      const line = this.renderMode === "hyperbolic" ? new THREE.Line(geometry, material) : new THREE.Line(geometry, material);
-      if (line.material instanceof THREE.LineDashedMaterial) line.computeLineDistances();
-      this.routeLayer.add(line);
-
-      const destination = this.tileVisuals.get(move.toTileId);
-      if (destination) {
-        const marker = new THREE.Mesh(
-          new THREE.SphereGeometry(0.105, 12, 10),
-          new THREE.MeshBasicMaterial({ color: "#dd8457", transparent: true, opacity: 0.92 }),
-        );
-        marker.position.copy(this.getTilePosition(destination)).addScaledVector(this.getTileNormal(destination), 0.22);
-        marker.scale.setScalar(localScale(destination, this.renderMode) * 0.75);
-        marker.userData.tileId = move.toTileId;
-        this.markerLayer.add(marker);
+    const moves = [...new Map(this.legalMoves.map((move) => [move.toTileId, move])).values()];
+    for (const move of moves) {
+      const active = move.toTileId === this.previewTileId;
+      this.addDestinationMarker(move, active);
+      if (active) {
+        this.addRouteGuide(selected, move);
+        this.addArrivalGhost(selected, move.toTileId);
       }
+    }
+    if (selected.type === "pawn" && this.renderMode === "hyperbolic") {
+      const tile = ARENA.tiles.get(selected.tileId)!;
+      const from = toDisplayPoint(tile.center, this.projectionCenter).add(new THREE.Vector3(0, 0.2, 0));
+      const to = toDisplayPoint(edgeMidpoint(tile.vertices, pawnForwardEdge(selected, ARENA)), this.projectionCenter).add(new THREE.Vector3(0, 0.2, 0));
+      const direction = to.clone().sub(from);
+      this.routeLayer.add(new THREE.ArrowHelper(direction.clone().normalize(), from, direction.length(), "#096759", 0.22, 0.18));
     }
   }
 
+  private addDestinationMarker(move: MoveOption, active: boolean): void {
+    const destination = this.tileVisuals.get(move.toTileId)!;
+    const capture = this.state!.pieces.some((piece) => piece.tileId === move.toTileId);
+    const marker = new THREE.Mesh(
+      new THREE.TorusGeometry(active ? 0.37 : 0.29, 0.055, 6, 24),
+      new THREE.MeshBasicMaterial({ color: capture ? "#a63224" : "#096759", depthTest: false, transparent: true, opacity: 0.95 }),
+    );
+    marker.position.copy(this.getTilePosition(destination)).addScaledVector(this.getTileNormal(destination), 0.1);
+    marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), this.getTileNormal(destination));
+    marker.scale.setScalar(localScale(destination, this.renderMode));
+    marker.userData.tileId = move.toTileId;
+    this.markerLayer.add(marker);
+  }
+
+  private addRouteGuide(piece: Piece, move: MoveOption): void {
+    const points = routeDisplayPoints(move.route, this.renderMode, this.projectionCenter);
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = this.renderMode === "hyperbolic"
+      ? new THREE.LineDashedMaterial({ color: "#9a3d19", dashSize: 0.18, gapSize: 0.06, depthTest: false })
+      : new THREE.LineBasicMaterial({ color: "#9a3d19", depthTest: false });
+    const line = new THREE.Line(geometry, material);
+    if (material instanceof THREE.LineDashedMaterial) line.computeLineDistances();
+    this.routeLayer.add(line);
+    const landings = new Set(this.renderMode === "hyperbolic" ? routeLandings(piece, move) : move.route.map((_, index) => index));
+    for (let index = 1; index < move.route.length - 1; index++) {
+      const landing = landings.has(index);
+      const guide = new THREE.Mesh(
+        landing ? new THREE.TorusGeometry(0.17, 0.035, 6, 16) : new THREE.SphereGeometry(0.07, 8, 6),
+        new THREE.MeshBasicMaterial({ color: "#9a3d19", depthTest: false }),
+      );
+      guide.position.copy(tileCenter(move.route[index], this.renderMode, this.projectionCenter)!).add(new THREE.Vector3(0, 0.15, 0));
+      if (landing) guide.rotation.x = -Math.PI / 2;
+      this.routeLayer.add(guide);
+    }
+    for (let index = 1; index < move.route.length; index++) {
+      const from = tileCenter(move.route[index - 1], this.renderMode, this.projectionCenter)!;
+      const to = tileCenter(move.route[index], this.renderMode, this.projectionCenter)!;
+      const direction = to.clone().sub(from);
+      const arrow = new THREE.ArrowHelper(
+        direction.clone().normalize(), from.clone().lerp(to, 0.55).add(new THREE.Vector3(0, 0.15, 0)),
+        Math.min(0.38, direction.length() * 0.3), "#9a3d19", 0.16, 0.12,
+      );
+      this.routeLayer.add(arrow);
+    }
+  }
+
+  private addArrivalGhost(piece: Piece, tileId: string): void {
+    const destination = this.tileVisuals.get(tileId)!;
+    const ghost = this.makePiece(piece);
+    ghost.traverse((object) => {
+      if (!(object instanceof THREE.Mesh || object instanceof THREE.Sprite)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        material.transparent = true;
+        material.opacity = 0.38;
+        material.depthWrite = false;
+      }
+    });
+    ghost.position.copy(this.getTilePosition(destination)).addScaledVector(this.getTileNormal(destination), 0.1);
+    ghost.scale.setScalar(localScale(destination, this.renderMode));
+    ghost.quaternion.setFromUnitVectors(WORLD_UP, this.getTileNormal(destination));
+    this.routeLayer.add(ghost);
+  }
+
   private rebuildPieces(): void {
-    this.pieceMeshes.clear();
     if (!this.state) return;
     const visiblePieces = new Set(this.state.pieces.filter((piece) => !isShadow(piece, this.renderMode)).map((piece) => piece.id));
     for (const [pieceId, group] of this.pieceAssets) {
@@ -358,7 +466,6 @@ export class BoardView {
       group.userData.pieceId = piece.id;
       group.userData.tileId = piece.tileId;
       this.pieceLayer.add(group);
-      this.pieceMeshes.set(piece.id, group);
     }
   }
 
@@ -477,6 +584,11 @@ export class BoardView {
         this.pieceLayer.visible = true;
         this.routeLayer.visible = true;
         this.markerLayer.visible = true;
+        if (this.pendingFocusId) {
+          const tileId = this.pendingFocusId;
+          this.pendingFocusId = null;
+          this.focusTile(tileId);
+        }
       }
     }
     this.renderer.render(this.scene, this.camera);
@@ -542,24 +654,34 @@ export class BoardView {
       const moved = Math.hypot(event.clientX - this.pressedAt.x, event.clientY - this.pressedAt.y);
       this.pressedAt = null;
       if (moved > 5) return;
-      const bounds = canvas.getBoundingClientRect();
-      this.pointer.set(
-        ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-        -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-      );
-      this.raycaster.setFromCamera(this.pointer, this.camera);
-      const hits = this.raycaster.intersectObjects([this.pieceLayer, this.markerLayer, this.tileLayer], true);
-      const hit = hits.find((item) => findData(item.object, "tileId"));
-      if (!hit) return;
-      const tileId = findData(hit.object, "tileId");
-      if (typeof tileId !== "string") return;
-      const pieceId = findData(hit.object, "pieceId");
-      this.focusedTileId = tileId;
-      this.onTilePicked(tileId, typeof pieceId === "string" ? pieceId : null);
+      const hit = this.pick(event);
+      if (hit) this.onTilePicked(hit.tileId, hit.pieceId);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (this.pressedAt || !this.interactive || this.isMorphing) return;
+      const tileId = this.pick(event)?.tileId ?? null;
+      if (tileId === this.hoveredTileId) return;
+      this.hoveredTileId = tileId;
+      canvas.style.cursor = tileId ? "pointer" : "grab";
+      this.onTileHovered(tileId);
     });
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
-    canvas.addEventListener("pointerleave", () => { this.pressedAt = null; });
+    canvas.addEventListener("pointerleave", () => { this.pressedAt = null; this.hoveredTileId = null; this.onTileHovered(null); });
     canvas.addEventListener("pointercancel", () => { this.pressedAt = null; });
+  }
+
+  private pick(event: PointerEvent): { tileId: string; pieceId: string | null } | null {
+    const bounds = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((event.clientX - bounds.left) / bounds.width) * 2 - 1, 1 - ((event.clientY - bounds.top) / bounds.height) * 2);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObjects([this.pieceLayer, this.markerLayer, this.tileLayer], true);
+    const hit = hits.find((item) => {
+      for (let object: THREE.Object3D | null = item.object; object; object = object.parent) if (!object.visible) return false;
+      return !!findData(item.object, "tileId");
+    });
+    if (!hit) return null;
+    const tileId = findData(hit.object, "tileId"), pieceId = findData(hit.object, "pieceId");
+    return typeof tileId === "string" ? { tileId, pieceId: typeof pieceId === "string" ? pieceId : null } : null;
   }
 
   private resize(): void {
@@ -568,7 +690,13 @@ export class BoardView {
     this.camera.aspect = rect.width / rect.height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(rect.width, rect.height, false);
-    if (this.overview) this.setOverviewPose(this.renderMode, this.wholeArena);
+    if (this.overview) this.setOverviewPose(this.renderMode);
+    else if (this.framedRadius) {
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      offset.setLength(overviewDistance(this.framedRadius, this.camera.fov, this.camera.aspect));
+      this.camera.position.copy(this.controls.target).add(offset);
+      this.controls.update();
+    }
   }
 }
 
@@ -608,7 +736,7 @@ function interpolateCorners(corners: THREE.Vector3[]): THREE.Vector3[] {
   return boundary;
 }
 
-function hyperbolicTile(tile: HyperbolicTile): { boundary: THREE.Vector3[]; grid: THREE.Vector3[]; center: THREE.Vector3; normal: THREE.Vector3 } {
+function hyperbolicTile(tile: HyperbolicTile, focus?: Vector3): { boundary: THREE.Vector3[]; grid: THREE.Vector3[]; center: THREE.Vector3; normal: THREE.Vector3 } {
   const boundary: THREE.Vector3[] = [];
   const modelBoundary: Vector3[] = [];
   for (let edge = 0; edge < 4; edge += 1) {
@@ -617,15 +745,15 @@ function hyperbolicTile(tile: HyperbolicTile): { boundary: THREE.Vector3[]; grid
     for (let step = 0; step < EDGE_STEPS; step += 1) {
       const point = geodesicPoint(first, second, step / EDGE_STEPS);
       modelBoundary.push(point);
-      boundary.push(toDisplayPoint(point));
+      boundary.push(toDisplayPoint(point, focus));
     }
   }
-  const center = toDisplayPoint(tile.center);
-  const normal = displayNormal(tile.center);
+  const center = toDisplayPoint(tile.center, focus);
+  const normal = displayNormal(tile.center, focus);
   const grid: THREE.Vector3[] = [];
   for (let ring = 1; ring <= TILE_RING_STEPS; ring += 1) {
     const progress = ring / TILE_RING_STEPS;
-    for (const point of modelBoundary) grid.push(toDisplayPoint(geodesicPoint(tile.center, point, progress)));
+    for (const point of modelBoundary) grid.push(toDisplayPoint(geodesicPoint(tile.center, point, progress), focus));
   }
   return { boundary, grid, center, normal };
 }
@@ -680,12 +808,12 @@ function tileGeometry(grid: THREE.Vector3[], boundary: THREE.Vector3[], center: 
   return geometry;
 }
 
-function routeDisplayPoints(route: string[], mode: GeometryMode): THREE.Vector3[] {
+function routeDisplayPoints(route: string[], mode: GeometryMode, focus?: Vector3): THREE.Vector3[] {
   const result: THREE.Vector3[] = [];
   for (let index = 0; index < route.length; index += 1) {
     const currentId = route[index];
     const current = ARENA.tiles.get(currentId);
-    const visualCenter = currentId ? tileCenter(currentId, mode) : null;
+    const visualCenter = currentId ? tileCenter(currentId, mode, focus) : null;
     if (!visualCenter) continue;
     if (index === 0) result.push(visualCenter);
     const nextId = route[index + 1];
@@ -695,18 +823,18 @@ function routeDisplayPoints(route: string[], mode: GeometryMode): THREE.Vector3[
       const nextTile = ARENA.tiles.get(nextId);
       if (exitEdge >= 0 && nextTile) {
         const midpoint = edgeMidpoint(current.vertices, exitEdge);
-        result.push(toDisplayPoint(midpoint));
+        result.push(toDisplayPoint(midpoint, focus));
       }
     }
-    result.push(tileCenter(nextId, mode) ?? visualCenter);
+    result.push(tileCenter(nextId, mode, focus) ?? visualCenter);
   }
   return result.map((point) => point.clone().add(new THREE.Vector3(0, 0.06, 0)));
 }
 
-function tileCenter(tileId: string, mode: GeometryMode): THREE.Vector3 | null {
+function tileCenter(tileId: string, mode: GeometryMode, focus?: Vector3): THREE.Vector3 | null {
   const tile = ARENA.tiles.get(tileId);
   if (!tile) return null;
-  if (mode === "hyperbolic") return toDisplayPoint(tile.center);
+  if (mode === "hyperbolic") return toDisplayPoint(tile.center, focus);
   const square = ARENA.flatSquareByTile.get(tileId);
   if (!square) return null;
   const { row, col } = squareCoordinates(square);
@@ -769,7 +897,7 @@ function clearGroup(group: THREE.Group): void {
 function disposeObject(root: THREE.Object3D): void {
   root.traverse((object) => {
     if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Sprite) {
-      object.geometry.dispose();
+      if (!(object instanceof THREE.Sprite)) object.geometry.dispose();
       const materials = Array.isArray(object.material) ? object.material : [object.material];
       for (const material of materials) {
         if (material instanceof THREE.SpriteMaterial && material.map) material.map.dispose();

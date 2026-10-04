@@ -1,4 +1,4 @@
-# Implement full chess armies and king-safe curvature tactics
+# Implement full chess armies and readable curvature tactics
 
 The sparse prototype had eight pieces, optional king safety, no special chess moves, and an arbitrary anchor map that exposed kings when a full army shifted geometry. This update starts every match with the orthodox 32-piece setup and keeps Curvature chess as the default.
 
@@ -10,6 +10,10 @@ The version-2 anchor map keeps starting armies in opposing regions. The tested o
 
 Code is separated into shared types, the standard-position adapter, curved move generation, and match transitions. Both server and browser call the same rule engine. The earlier board framing, route/picking, and clipping fixes remain included.
 
+The curved overview compressed edge pieces into narrow tiles, while drawing every legal route simultaneously obscured movement. Selecting a piece now recenters its neighborhood with a Lorentz boost before display projection, so every selected tile has the same usable size as the central tile. A shallow, more overhead view reduces occlusion; Whole arena restores context and Show entire route frames a selected move. The board remains visible while controls scroll independently on desktop and mobile.
+
+Curved destinations now preview before confirmation. One route appears at a time with direction arrows, guide dots, landing rings, an arrival ghost, and a plain-language explanation. Pawns show their forward direction. Destination controls distinguish moves from captures, work by keyboard, and support cancellation. Once a destination is chosen, hovering another cannot change the visual preview without changing the chosen move. These changes affect presentation and input only; the existing movement graph and room protocol remain compatible.
+
 ## Validation
 
 - Full setup, opening move counts, depth-two perft (400), pins and king safety.
@@ -18,6 +22,9 @@ Code is separated into shared types, the standard-position adapter, curved move 
 - Curved rays/diagonals/queen union, pawn movement/capture/heading/promotion, safe shifts, shadows and JSON reconnects.
 - WebSocket seat ownership, invalid moves/promotions, checkmate, rematch and reconnect.
 - TypeScript and production build.
+- Local projection: all 109 focus tiles retain equal usable center-to-edge size, all edge distances are invariant under recentering, and focused/overview displays remain bounded and finite.
+- Route explanation regressions distinguish intermediate guide tiles from true landing squares for sliding pieces and jumps.
+- Browser checks for destination preview, explicit confirmation, cancellation without consuming a turn, full-route framing, and a 390×844 mobile layout with the board and move controls visible together.
 - Browser smoke checks: full board, new bishop route after shifting, preview comparison, illegal FEN error, promotion dialog, and knight underpromotion ending in a material draw.
 
 ## Compatibility and limitations
