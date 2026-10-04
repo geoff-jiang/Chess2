@@ -23,6 +23,7 @@ Open the Vite URL printed by `npm run dev`. For a production build, `npm start` 
 
 - Create a private room and send the six-character code or copied invite link to one other player. A room reserves exactly two seats.
 - Choose **Try a local match on this device** to play both sides without a second browser.
+- Choose **Try the guided opening** to preview a geometry shift, commit it, then inspect and play a newly opened rook route.
 - Drag to orbit, right-drag to pan, and use the wheel or a pinch gesture to zoom. **Reset view** restores that browser's camera. Camera state is never sent to the server.
 - Select a piece to reveal its available destinations and routes. Select a destination to move.
 - Choose the other geometry to preview it locally. **Commit** spends the current turn and changes the shared board.
@@ -43,7 +44,7 @@ King threats are displayed, but a player may leave a king threatened; this first
 
 The rules engine generates the arena by reflecting a regular hyperbolic square across its edges in the hyperboloid model. Breadth-first face traversal creates the central tile plus four rings: 109 tiles in total. Vertex coordinates build the corner-neighbor graph; rook routes use edge adjacency, not distances in the rendered scene. The 3D board is a display of the hyperbolic world.
 
-The generated arena has 32 pairs of opposite noncentral tiles among the anchors. The 64 flat squares are paired by a half-turn and assigned to those tile pairs in deterministic ring and angle order. The map is versioned and identical for every match. It links two different game spaces; it does not preserve the square grid's distances or neighbors when the geometry changes.
+The generated arena has 32 pairs of opposite noncentral tiles among the anchors. The 64 flat squares are paired by a half-turn and assigned to those tile pairs in deterministic ring and tile ID order. This uses the arena's stable generated IDs, avoiding floating-point angle sorting across server and browser runtimes. The map is versioned and identical for every match. It links two different game spaces; it does not preserve the square grid's distances or neighbors when the geometry changes.
 
 ## Project layout
 

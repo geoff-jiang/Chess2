@@ -6,6 +6,7 @@ import {
   type Arena,
   type SquareId,
 } from "./geometry.ts";
+import { capitalize } from "./labels.ts";
 
 export type Side = "white" | "black";
 export type PieceType = "king" | "rook" | "knight" | "guard";
@@ -201,26 +202,25 @@ function movesForPiece(state: GameState, piece: Piece, arena: Arena): MoveOption
   for (const other of state.pieces) {
     if (!isShadow(other, state.mode, arena)) occupied.set(other.tileId, other);
   }
-  const addIfOpen = (toTileId: string, route: string[], moves: MoveOption[]) => {
+  const addMoveAndReportOccupancy = (toTileId: string, route: string[], moves: MoveOption[]) => {
     const target = occupied.get(toTileId);
     if (target?.side === piece.side) return true;
-    if (target?.type === "king" && target.side === piece.side) return false;
     moves.push({ toTileId, route });
     return target !== undefined;
   };
 
   return state.mode === "flat"
-    ? flatMoves(piece, occupied, arena, addIfOpen)
-    : hyperbolicMoves(piece, occupied, arena, addIfOpen);
+    ? flatMoves(piece, occupied, arena, addMoveAndReportOccupancy)
+    : hyperbolicMoves(piece, occupied, arena, addMoveAndReportOccupancy);
 }
 
-type AddIfOpen = (toTileId: string, route: string[], moves: MoveOption[]) => boolean;
+type AddMoveAndReportOccupancy = (toTileId: string, route: string[], moves: MoveOption[]) => boolean;
 
 function flatMoves(
   piece: Piece,
   occupied: Map<string, Piece>,
   arena: Arena,
-  addIfOpen: AddIfOpen,
+  addMoveAndReportOccupancy: AddMoveAndReportOccupancy,
 ): MoveOption[] {
   const square = arena.flatSquareByTile.get(piece.tileId);
   if (!square) return [];
@@ -231,7 +231,7 @@ function flatMoves(
     const nextSquare = squareId(nextRow, nextCol);
     const toTileId = arena.anchors.get(nextSquare);
     if (!toTileId) return false;
-    return addIfOpen(toTileId, [piece.tileId, toTileId], moves);
+    return addMoveAndReportOccupancy(toTileId, [piece.tileId, toTileId], moves);
   };
 
   if (piece.type === "rook") {
@@ -243,7 +243,7 @@ function flatMoves(
         const toTileId = arena.anchors.get(squareId(nextRow, nextCol));
         if (!toTileId) break;
         route.push(toTileId);
-        const blocked = addIfOpen(toTileId, [...route], moves);
+        const blocked = addMoveAndReportOccupancy(toTileId, [...route], moves);
         if (blocked) break;
         nextRow += rowStep;
         nextCol += colStep;
@@ -272,7 +272,7 @@ function hyperbolicMoves(
   piece: Piece,
   occupied: Map<string, Piece>,
   arena: Arena,
-  addIfOpen: AddIfOpen,
+  addMoveAndReportOccupancy: AddMoveAndReportOccupancy,
 ): MoveOption[] {
   const moves: MoveOption[] = [];
   const sourceTile = arena.tiles.get(piece.tileId);
@@ -284,7 +284,7 @@ function hyperbolicMoves(
       const route = [piece.tileId];
       for (const toTileId of ray) {
         route.push(toTileId);
-        const blocked = addIfOpen(toTileId, [...route], moves);
+        const blocked = addMoveAndReportOccupancy(toTileId, [...route], moves);
         if (blocked) break;
       }
     }
@@ -307,22 +307,18 @@ function hyperbolicMoves(
         destinations.set(side.tileId, [piece.tileId, first.tileId, second.tileId, side.tileId]);
       }
     }
-    for (const [toTileId, route] of destinations) addIfOpen(toTileId, route, moves);
+    for (const [toTileId, route] of destinations) addMoveAndReportOccupancy(toTileId, route, moves);
   } else if (piece.type === "king") {
     for (const toTileId of arena.touchNeighbors.get(piece.tileId) ?? []) {
-      if (arena.flatSquareByTile.has(toTileId)) addIfOpen(toTileId, [piece.tileId, toTileId], moves);
+      if (arena.flatSquareByTile.has(toTileId)) addMoveAndReportOccupancy(toTileId, [piece.tileId, toTileId], moves);
     }
   } else {
     for (const link of sourceTile.neighbors) {
-      if (link) addIfOpen(link.tileId, [piece.tileId, link.tileId], moves);
+      if (link) addMoveAndReportOccupancy(link.tileId, [piece.tileId, link.tileId], moves);
     }
   }
 
   return moves;
-}
-
-function capitalize(value: string): string {
-  return value[0].toUpperCase() + value.slice(1);
 }
 
 function locationName(tileId: string, arena: Arena): string {

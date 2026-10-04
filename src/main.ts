@@ -1,6 +1,7 @@
 import "./styles.css";
-import { applyAction, createInitialState, getLegalMoves, isInCheck, isShadow, type GameAction, type GameState, type GeometryMode, type HistoryItem, type Piece, type Side } from "./shared/game.ts";
+import { applyAction, createInitialState, getLegalMoves, isInCheck, isShadow, oppositeSide, type GameAction, type GameState, type GeometryMode, type HistoryItem, type Piece, type Side } from "./shared/game.ts";
 import { ARENA } from "./shared/geometry.ts";
+import { capitalize, pieceLetter } from "./shared/labels.ts";
 import { BoardView } from "./view/board-view.ts";
 
 interface RoomSnapshot {
@@ -58,6 +59,7 @@ app.innerHTML = `
           </form>
           <p id="form-error" class="form-error" role="status"></p>
           <button id="local-game" class="local-link" type="button">Try a local match on this device</button>
+          <button id="guided-opening" class="local-link guided-start" type="button">Try the guided opening · 2 minutes</button>
           <div class="lobby-note">No account needed. Share a room link with one other player to begin.</div>
         </section>
 
@@ -85,6 +87,12 @@ app.innerHTML = `
             <p id="mode-help" class="mode-help">Pieces use the familiar 8×8 square grid.</p>
             <p id="shift-lock" class="shift-lock ready">A geometry shift is available.</p>
             <button id="commit-shift" class="outline-button full shift-button" type="button" hidden>Spend a turn to shift</button>
+          </section>
+
+          <section id="opening-guide" class="opening-guide" aria-live="polite" hidden>
+            <div id="opening-guide-step" class="opening-guide-step"></div>
+            <h2 id="opening-guide-title" class="opening-guide-title"></h2>
+            <p id="opening-guide-copy" class="opening-guide-copy"></p>
           </section>
 
           <section class="rail-section" aria-labelledby="shadow-heading">
@@ -115,6 +123,7 @@ let roomConnections: Record<Side, boolean> = { white: false, black: false };
 let rematchRequestedByOther = false;
 let rematchRequestedByYou = false;
 let previewMode: GeometryMode | null = null;
+let guidedStep: "shift" | "inspect" | "route" | "done" | null = null;
 let selectedPieceId: string | null = null;
 let pendingAction = false;
 let clientConnectionStatus: "offline" | "connecting" | "connected" = "offline";
@@ -150,7 +159,10 @@ element<HTMLFormElement>("join-form").addEventListener("submit", (event) => {
   setLobbyPending(true);
 });
 
-element<HTMLButtonElement>("local-game").addEventListener("click", () => {
+element<HTMLButtonElement>("local-game").addEventListener("click", () => startLocalGame(false));
+element<HTMLButtonElement>("guided-opening").addEventListener("click", () => startLocalGame(true));
+
+function startLocalGame(withGuide: boolean): void {
   gameState = createInitialState();
   matchKind = "local";
   seat = null;
@@ -158,11 +170,12 @@ element<HTMLButtonElement>("local-game").addEventListener("click", () => {
   seatToken = null;
   roomConnections = { white: true, black: true };
   previewMode = null;
+  guidedStep = withGuide ? "shift" : null;
   selectedPieceId = null;
   pendingAction = false;
   showMatchPanel();
   render();
-});
+}
 
 element<HTMLButtonElement>("flat-preview").addEventListener("click", () => togglePreview("flat"));
 element<HTMLButtonElement>("hyperbolic-preview").addEventListener("click", () => togglePreview("hyperbolic"));
@@ -240,6 +253,9 @@ function onTilePicked(tileId: string, pieceId: string | null): void {
   } else {
     selectedPieceId = null;
   }
+  if (guidedStep === "inspect" && selectedPieceId === "black-rook" && gameState.mode === "hyperbolic") {
+    guidedStep = "route";
+  }
   boardView.focusTile(tileId);
   render();
 }
@@ -250,7 +266,18 @@ function submitAction(action: GameAction): void {
   if (matchKind === "local") {
     try {
       gameState = applyAction(gameState, action);
+      let focusGuideRook = false;
+      if (guidedStep === "shift" && action.kind === "shift" && gameState.mode === "hyperbolic") {
+        guidedStep = "inspect";
+        focusGuideRook = true;
+      } else if ((guidedStep === "inspect" || guidedStep === "route") && action.kind === "move") {
+        guidedStep = "done";
+      }
       render();
+      if (focusGuideRook) {
+        const blackRook = gameState.pieces.find((piece) => piece.id === "black-rook");
+        if (blackRook) boardView.focusTile(blackRook.tileId);
+      }
     } catch (error) {
       showToast(error instanceof Error ? error.message : "That action could not be made.");
     }
@@ -341,6 +368,7 @@ function onServerMessage(raw: unknown): void {
   seatToken = message.seatToken;
   localStorage.setItem(seatStorageKey(message.code), message.seatToken);
   roomConnections = message.connections;
+  guidedStep = null;
   rematchRequestedByOther = message.rematchRequestedByOther;
   rematchRequestedByYou = message.rematchRequestedByYou;
   const priorState = gameState;
@@ -363,11 +391,14 @@ function onServerMessage(raw: unknown): void {
 function render(): void {
   const state = gameState ?? previewState;
   const displayMode = previewMode ?? state.mode;
+  const displayState = gameState ? { ...gameState, mode: displayMode } : previewState;
   const selectedPiece = gameState?.pieces.find((piece) => piece.id === selectedPieceId) ?? null;
-  const selectedMoves = gameState && selectedPiece ? getLegalMoves(gameState, selectedPiece.id) : [];
+  const selectedMoves = gameState && selectedPiece ? getLegalMoves(displayState, selectedPiece.id) : [];
   const isPlayable = canAct();
 
-  boardView.update(state, displayMode, selectedPieceId, selectedMoves, isPlayable);
+  const guidePiece = guidedStep === "inspect" ? gameState?.pieces.find((piece) => piece.id === "black-rook") : undefined;
+  boardView.setTutorialTarget(guidePiece?.tileId ?? null);
+  boardView.update(displayState, displayMode, selectedPieceId, selectedMoves, isPlayable);
   element<HTMLButtonElement>("overview-view").hidden = displayMode !== "hyperbolic";
   element<HTMLElement>("scene-title").textContent = gameState ? `${displayMode === "hyperbolic" ? "Curved" : "Flat"} geometry` : "A preview of the arena";
   element<HTMLElement>("scene-coordinates").textContent = displayMode === "flat" ? "8 × 8 anchors · familiar routes" : "109 tiles · five around a corner";
@@ -384,6 +415,7 @@ function render(): void {
   renderMatchStatus(gameState);
   renderSeats();
   renderGeometryControls(gameState);
+  renderOpeningGuide();
   renderShadows(gameState, displayMode);
   renderHistory(gameState.history);
   renderFinish(gameState);
@@ -405,7 +437,6 @@ function renderMatchStatus(state: GameState): void {
   const kicker = element<HTMLElement>("match-kicker");
   const substatus = element<HTMLDivElement>("match-substatus");
   substatus.className = "match-substatus";
-
   if (state.status.kind === "won") {
     status.textContent = `${capitalize(state.status.winner)} wins`;
     kicker.textContent = "King captured";
@@ -422,7 +453,7 @@ function renderMatchStatus(state: GameState): void {
   const yourTurn = matchKind === "local" || seat === state.activePlayer;
   status.textContent = yourTurn ? "Your turn" : `${capitalize(state.activePlayer)} to move`;
   kicker.textContent = matchKind === "local" ? "Pass the table" : yourTurn ? `You are ${seat}` : "Waiting for the other player";
-  if (matchKind === "online" && !roomConnections[opposite(state.activePlayer)]) {
+  if (matchKind === "online" && !roomConnections[oppositeSide(state.activePlayer)]) {
     substatus.textContent = "The other player is disconnected. Their seat is held for them.";
     substatus.classList.add("alert");
   } else if (clientConnectionStatus === "connecting" || clientConnectionStatus === "offline" && matchKind === "online") {
@@ -481,6 +512,32 @@ function renderGeometryControls(state: GameState): void {
   shift.textContent = `Commit ${capitalize(previewMode ?? state.mode)} shift · spend this turn`;
 }
 
+function renderOpeningGuide(): void {
+  const guide = element<HTMLElement>("opening-guide");
+  if (matchKind !== "local" || !guidedStep || guidedStep === "done") {
+    guide.hidden = true;
+    return;
+  }
+
+  guide.hidden = false;
+  const step = element<HTMLElement>("opening-guide-step");
+  const title = element<HTMLHeadingElement>("opening-guide-title");
+  const copy = element<HTMLParagraphElement>("opening-guide-copy");
+  if (guidedStep === "shift") {
+    step.textContent = "Guided opening · 1 of 3";
+    title.textContent = "Shift the board";
+    copy.textContent = "Preview Curved, then commit the shift. White spends this turn; Black moves next.";
+  } else if (guidedStep === "inspect") {
+    step.textContent = "Guided opening · 2 of 3";
+    title.textContent = "Find a new route";
+    copy.textContent = "Select Black's rook. On the curved board, its straight route crosses tiles in a new direction.";
+  } else {
+    step.textContent = "Guided opening · 3 of 3";
+    title.textContent = "Follow the route";
+    copy.textContent = "Choose one of the highlighted tiles to move the rook along its new route.";
+  }
+}
+
 function renderShadows(state: GameState, displayMode: GeometryMode): void {
   const container = element<HTMLDivElement>("shadow-groups");
   const hidden = state.pieces.filter((piece) => isShadow(piece, displayMode));
@@ -500,7 +557,7 @@ function renderHistory(history: HistoryItem[]): void {
     container.innerHTML = "<div class=\"history-empty\">Moves and geometry shifts will appear here.</div>";
     return;
   }
-  container.innerHTML = history.slice(-8).reverse().map((item) => `
+  container.innerHTML = history.slice().reverse().map((item) => `
     <div class="history-row"><span class="history-index">${String(item.ply).padStart(2, "0")}</span><span class="history-side ${item.actor}">${item.actor === "white" ? "W" : "B"}</span><span class="history-note">${escapeHtml(item.notation)}</span></div>
   `).join("");
 }
@@ -570,18 +627,6 @@ function element<T extends HTMLElement>(id: string): T {
 
 function seatStorageKey(code: string): string {
   return `curvature-chess:seat:${code.toUpperCase()}`;
-}
-
-function pieceLetter(type: Piece["type"]): string {
-  return type === "knight" ? "N" : type[0].toUpperCase();
-}
-
-function opposite(side: Side): Side {
-  return side === "white" ? "black" : "white";
-}
-
-function capitalize(value: string): string {
-  return value[0].toUpperCase() + value.slice(1);
 }
 
 function escapeHtml(value: string): string {

@@ -168,7 +168,7 @@ function reflect(point: Vector3, normal: Vector3): Vector3 {
   return subtract(point, scale(normal, 2 * lorentzDot(point, normal)));
 }
 
-function edgeMidpoint(vertices: Vector3[], edgeIndex: number): Vector3 {
+export function edgeMidpoint(vertices: Vector3[], edgeIndex: number): Vector3 {
   const first = vertices[edgeIndex];
   const second = vertices[(edgeIndex + 1) % vertices.length];
   const sum = add(first, second);
@@ -243,17 +243,12 @@ function buildAnchors(
     if (tileId < oppositeId) tilePairs.push([tileId, oppositeId]);
   }
 
-  const angle = (id: string) => {
-    const center = tiles.get(id)!.center;
-    let value = Math.atan2(center.y, center.x);
-    if (value < 0) value += Math.PI * 2;
-    return value;
-  };
   tilePairs.sort((left, right) => {
     const ringDifference = Math.min(tiles.get(left[0])!.ring, tiles.get(left[1])!.ring)
       - Math.min(tiles.get(right[0])!.ring, tiles.get(right[1])!.ring);
     if (ringDifference !== 0) return ringDifference;
-    return Math.min(angle(left[0]), angle(left[1])) - Math.min(angle(right[0]), angle(right[1]));
+    if (left[0] !== right[0]) return left[0] < right[0] ? -1 : 1;
+    return left[1] < right[1] ? -1 : left[1] > right[1] ? 1 : 0;
   });
 
   const squarePairs: [SquareId, SquareId][] = [];
@@ -269,7 +264,9 @@ function buildAnchors(
       const { row, col } = squareCoordinates(square);
       return Math.max(Math.abs(row - 3.5), Math.abs(col - 3.5));
     };
-    return radius(left[0]) - radius(right[0]) || left[0].localeCompare(right[0]);
+    const radiusDifference = radius(left[0]) - radius(right[0]);
+    if (radiusDifference !== 0) return radiusDifference;
+    return left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0;
   });
 
   const anchors = new Map<SquareId, string>();
@@ -278,7 +275,7 @@ function buildAnchors(
     const [square, oppositeSquare] = squarePairs[index];
     const pair = tilePairs[index];
     if (!pair) throw new Error("The four-ring patch has too few rotationally paired tiles");
-    const [firstTile, secondTile] = angle(pair[0]) < angle(pair[1]) ? pair : [pair[1], pair[0]];
+    const [firstTile, secondTile] = pair;
     anchors.set(square, firstTile);
     anchors.set(oppositeSquare, secondTile);
     flatSquareByTile.set(firstTile, square);

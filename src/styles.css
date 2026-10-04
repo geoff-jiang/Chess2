@@ -214,6 +214,7 @@ button:disabled { cursor: not-allowed; opacity: 0.46; }
 .join-row .secondary-button { min-height: 42px; }
 .local-link { width: 100%; margin-top: 16px; padding: 9px 0; color: #a3b9bc; background: none; border: 0; font-size: 11px; text-align: left; }
 .local-link:hover { color: var(--sea); }
+.guided-start { margin-top: 0; color: #dca283; }
 .form-error { min-height: 17px; margin: 9px 0 0; color: #efaa86; font-size: 11px; line-height: 1.5; }
 .lobby-note { margin-top: 20px; padding-top: 15px; color: #8da3aa; border-top: 1px solid rgba(226,238,233,.1); font-size: 10px; line-height: 1.65; }
 
@@ -256,6 +257,11 @@ button:disabled { cursor: not-allowed; opacity: 0.46; }
 .shift-lock.ready { color: #9fd6ca; }
 .shift-button { min-height: 37px; }
 .shift-button[hidden] { display: none; }
+.opening-guide { margin: 11px 0 2px; padding: 12px; background: rgba(117,200,194,.055); border: 1px solid rgba(117,200,194,.24); border-radius: 5px; }
+.opening-guide[hidden] { display: none; }
+.opening-guide-step { color: var(--sea); font-size: 9px; font-weight: 700; letter-spacing: .075em; text-transform: uppercase; }
+.opening-guide-title { margin: 5px 0 4px; color: #e8eee7; font: 500 15px/1.25 "Iowan Old Style", Georgia, serif; }
+.opening-guide-copy { margin: 0; color: #a8bbba; font-size: 10px; line-height: 1.6; }
 
 .shadow-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .shadow-column { min-height: 38px; padding: 8px; background: rgba(255,255,255,.025); border: 1px solid rgba(230,240,235,.08); border-radius: 4px; }

@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { isInCheck, isShadow, type GameState, type GeometryMode, type MoveOption, type Piece } from "../shared/game.ts";
-import { ARENA, squareCoordinates, type HyperbolicTile, type SquareId, type Vector3 } from "../shared/geometry.ts";
+import { ARENA, edgeMidpoint, squareCoordinates, type HyperbolicTile, type SquareId, type Vector3 } from "../shared/geometry.ts";
+import { pieceLetter } from "../shared/labels.ts";
 
 const EDGE_STEPS = 8;
 const EDGE_POINTS = EDGE_STEPS * 4;
@@ -46,6 +47,7 @@ export class BoardView {
   private state: GameState | null = null;
   private renderMode: GeometryMode = "flat";
   private selectedPieceId: string | null = null;
+  private tutorialTileId: string | null = null;
   private legalMoves: MoveOption[] = [];
   private interactive = false;
   private morphFrom: GeometryMode = "flat";
@@ -109,6 +111,10 @@ export class BoardView {
   showWholeArena(): void {
     this.focusedTileId = null;
     this.setOverviewPose("hyperbolic", true);
+  }
+
+  setTutorialTarget(tileId: string | null): void {
+    this.tutorialTileId = tileId;
   }
 
   update(
@@ -263,12 +269,13 @@ export class BoardView {
       const isDestination = destinations.has(tileId);
       const isRoute = routeTiles.has(tileId) && !isSelected && !isDestination;
       const isThreatenedKing = activeKing?.tileId === tileId && kingThreatened;
-      const color = isThreatenedKing ? "#c85c47" : isSelected ? "#d69a52" : isDestination ? "#d27d4d" : isRoute ? "#477b7c" : null;
+      const isTutorialTarget = tileId === this.tutorialTileId;
+      const color = isThreatenedKing ? "#c85c47" : isSelected ? "#d69a52" : isDestination ? "#d27d4d" : isRoute ? "#477b7c" : isTutorialTarget ? "#75c8c2" : null;
       visual.mesh.material.color.set(color ?? baseColor(tileId));
       visual.mesh.material.emissive.set(color ?? "#000000");
-      visual.mesh.material.emissiveIntensity = isSelected ? 0.28 : isDestination ? 0.17 : isRoute ? 0.08 : isThreatenedKing ? 0.18 : 0;
-      visual.rim.material.color.set(isDestination ? "#efaa74" : isRoute ? "#8ed1c7" : "#526f76");
-      visual.rim.material.opacity = isDestination ? 0.96 : isRoute ? 0.8 : 0.43;
+      visual.mesh.material.emissiveIntensity = isSelected ? 0.28 : isDestination ? 0.17 : isRoute ? 0.08 : isThreatenedKing || isTutorialTarget ? 0.18 : 0;
+      visual.rim.material.color.set(isDestination ? "#efaa74" : isRoute || isTutorialTarget ? "#8ed1c7" : "#526f76");
+      visual.rim.material.opacity = isDestination ? 0.96 : isRoute || isTutorialTarget ? 0.8 : 0.43;
     }
   }
 
@@ -408,7 +415,7 @@ export class BoardView {
     context.font = "700 48px Avenir Next, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(pieceInitial(type), 48, 51);
+    context.fillText(pieceLetter(type), 48, 51);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
@@ -661,14 +668,6 @@ function tileCenter(tileId: string, mode: GeometryMode): THREE.Vector3 | null {
   return new THREE.Vector3((col - 3.5) * FLAT_SPACING, 0.14, (row - 3.5) * FLAT_SPACING);
 }
 
-function edgeMidpoint(vertices: Vector3[], edgeIndex: number): Vector3 {
-  const first = vertices[edgeIndex];
-  const second = vertices[(edgeIndex + 1) % vertices.length];
-  const sum = { x: first.x + second.x, y: first.y + second.y, z: first.z + second.z };
-  const length = Math.sqrt(sum.z * sum.z - sum.x * sum.x - sum.y * sum.y);
-  return { x: sum.x / length, y: sum.y / length, z: sum.z / length };
-}
-
 function geodesicPoint(first: Vector3, second: Vector3, progress: number): Vector3 {
   const product = first.x * second.x + first.y * second.y - first.z * second.z;
   const distance = Math.acosh(Math.max(1, -product));
@@ -705,10 +704,6 @@ function baseColor(tileId: string): string {
 function anchorColor(square: SquareId): string {
   const { row, col } = squareCoordinates(square);
   return (row + col) % 2 === 0 ? "#bac9c3" : "#71888b";
-}
-
-function pieceInitial(type: Piece["type"]): string {
-  return type === "knight" ? "N" : type[0].toUpperCase();
 }
 
 function writeVector(target: Float32Array, index: number, vector: THREE.Vector3): void {

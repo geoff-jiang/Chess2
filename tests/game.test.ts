@@ -9,6 +9,8 @@ test("the opening force is mirrored, with no immediate king capture", () => {
   assert.equal(state.pieces.filter((piece) => piece.type === "king").length, 2);
   assert.equal(state.status.kind, "playing");
   assert.ok(state.pieces.every((piece) => ARENA.flatSquareByTile.has(piece.tileId)));
+  assert.equal(isInCheck(state, "white"), false);
+  assert.equal(isInCheck(state, "black"), false);
 
   for (const piece of state.pieces.filter((piece) => piece.side === "white")) {
     const opposite = ARENA.oppositeTile.get(piece.tileId);
