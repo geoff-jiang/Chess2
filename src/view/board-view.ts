@@ -342,8 +342,14 @@ export class BoardView {
       const normal = this.getTileNormal(visual);
       const scale = localScale(visual, this.renderMode);
       let group = this.pieceAssets.get(piece.id);
+      if (group && group.userData.pieceType !== piece.type) {
+        this.pieceLayer.remove(group);
+        disposeObject(group);
+        group = undefined;
+      }
       if (!group) {
         group = this.makePiece(piece);
+        group.userData.pieceType = piece.type;
         this.pieceAssets.set(piece.id, group);
       }
       group.scale.setScalar(scale);
@@ -392,6 +398,24 @@ export class BoardView {
       body.scale.y = 1.27;
       body.position.y = 0.39;
       group.add(body);
+    } else if (piece.type === "pawn") {
+      body = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.23, 0.3, 12), material);
+      body.position.y = 0.28;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), material);
+      head.position.y = 0.51;
+      group.add(body, head);
+    } else if (piece.type === "queen") {
+      body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.28, 0.43, 12), material);
+      body.position.y = 0.34;
+      const crown = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 6, 12), trim);
+      crown.rotation.x = Math.PI / 2;
+      crown.position.y = 0.61;
+      group.add(body, crown);
+      for (let index = 0; index < 5; index++) {
+        const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), trim);
+        jewel.position.set(Math.cos(index * Math.PI * 2 / 5) * 0.22, 0.68, Math.sin(index * Math.PI * 2 / 5) * 0.22);
+        group.add(jewel);
+      }
     } else {
       body = new THREE.Mesh(new THREE.ConeGeometry(0.29, 0.49, 4, 1), material);
       body.rotation.y = Math.PI / 4;
@@ -404,10 +428,6 @@ export class BoardView {
     const tag = this.makePieceLabel(piece.type, isWhite);
     tag.position.y = piece.type === "king" ? 0.91 : 0.8;
     group.add(tag);
-    for (const child of group.children) {
-      child.userData.pieceId = piece.id;
-      child.userData.tileId = piece.tileId;
-    }
     return group;
   }
 

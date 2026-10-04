@@ -1,19 +1,25 @@
-# Fix board framing and picking; expose full hyperbolic king tactics
+# Implement full chess armies and king-safe curvature tactics
 
-Fixed overview distances clipped the board in narrow viewports, and geometry shifts mutated tile positions without updating the bounds used by culling and raycasting. Routes also lay directly on tile surfaces and outer piece sizing ignored narrow tile depth.
+The sparse prototype had eight pieces, optional king safety, no special chess moves, and an arbitrary anchor map that exposed kings when a full army shifted geometry. This update starts every match with the orthodox 32-piece setup and keeps Curvature chess as the default.
 
-This change fits the active arena to both viewport axes, refreshes morphed bounds, lifts routes, reduces piece footprint, bounds the preview banner, and prevents picking during transitions. Overview responds to resize while manually navigated views retain their pose.
+Flat movement uses a shared chess.js adapter for legal moves, castling, en passant, all four promotions, and check detection. Kings cannot be captured or left in check in either geometry. Checkmate/stalemate consider safe shifts as escape actions in Curvature games. A separate Standard ruleset disables shifts and adds orthodox dead-material and fifty-move draws; repetition is tracked with complete position rights.
 
-Hyperbolic kings now use the complete edge/corner graph, making the five-squares-per-vertex structure relevant to king tactics. Either king leaving the anchors prevents a return to flat geometry, enforced by the rules engine and explained in the UI. This is a balance-affecting experimental change, not evidence that the game is already strategically compelling.
+Curved bishops use transported alternating-turn diagonals, queens combine those with rook rays, and pawns carry an explicit forward heading. Shifts cost a turn, retain the two-move lock, and are rejected when they expose the mover's king or produce an invalid flat position. Returning to flat revokes castling and en passant. Extra-tile pieces remain persistent shadows, while kings must stay capturable.
 
-The accompanying review documents root causes, remaining implementation proposals, versioned anchor-map migration, tactical tutorial requirements, and playtest criteria. Arbitrary anchor correspondence and sparse opening positions remain unresolved design issues.
+The version-2 anchor map keeps starting armies in opposing regions. The tested opening shift opens a previously blocked bishop route without exposing either king. Local previews report gained/lost destinations; keyboard move controls, a promotion dialog, distinct piece models, and validated local FEN analysis make the rules inspectable.
+
+Code is separated into shared types, the standard-position adapter, curved move generation, and match transitions. Both server and browser call the same rule engine. The earlier board framing, route/picking, and clipping fixes remain included.
 
 ## Validation
 
-- Automated geometry, game, display, camera-fit, and WebSocket server tests.
-- TypeScript checking and Vite production build.
-- Browser visual and gesture acceptance checks are listed in `docs/geometry-review.md`; they have not yet been performed.
+- Full setup, opening move counts, depth-two perft (400), pins and king safety.
+- Castling, lost rights, en passant expiry/discovered check, all four promotions.
+- Mate, stalemate, repetition, standard fifty-move/dead-material draws, invalid FEN/state rejection.
+- Curved rays/diagonals/queen union, pawn movement/capture/heading/promotion, safe shifts, shadows and JSON reconnects.
+- WebSocket seat ownership, invalid moves/promotions, checkmate, rematch and reconnect.
+- TypeScript and production build.
+- Browser smoke checks: full board, new bishop route after shifting, preview comparison, illegal FEN error, promotion dialog, and knight underpromotion ending in a material draw.
 
-## Risks
+## Compatibility and limitations
 
-Full-graph king movement changes balance and can prolong curved play. Piece sizing remains a sampled heuristic. Transitions intentionally hide pieces and routes while tiles morph. Vite reports the existing large JavaScript bundle warning.
+Restart the room server when upgrading: version-1 positions cannot be reused with version-2 anchors. Curved piece rules are an explicit variant, not orthodox chess on a curved picture. Comparative playtesting is still needed for balance. Draw claims are automated; clocks, draw offers, and tournament arbiter procedures are outside this application. The existing large Vite bundle warning remains.

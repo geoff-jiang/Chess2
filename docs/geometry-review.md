@@ -1,5 +1,7 @@
 # Geometry and interaction review
 
+This review describes the earlier eight-piece prototype. The full-chess update supersedes its anchor mapping and king-capture rules: see the README for current rules. The update adds 32 pieces, both-geometry king safety, checkmate, a version-2 map keeping opening armies apart, transported diagonals and pawn headings, route comparisons, and keyboard piece/destination controls. Curvature remains the default; balance still requires playtesting.
+
 ## Assessment
 
 The program has a genuine hyperbolic rules graph: five squares meet at an interior vertex, and rook continuation follows opposite edges. Bending the display surface is not the source of that geometry. The gameplay weakness is that the player cannot easily predict or exploit the graph change. A deterministic but spatially arbitrary anchor permutation can feel like teleportation rather than understandable curvature. Eight pieces across 109 tiles also leave little contested territory. These are code-based diagnoses, not conclusions from user playtests.
