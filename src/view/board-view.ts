@@ -71,8 +71,8 @@ export class BoardView {
     private readonly onFocusChanged: (tileId: string | null) => void = () => {},
   ) {
     this.onTilePicked = onTilePicked;
-    this.scene.background = new THREE.Color("#dce4e4");
-    this.scene.fog = new THREE.Fog("#dce4e4", 150, 650);
+    this.scene.background = new THREE.Color("#d8dec4");
+    this.scene.fog = new THREE.Fog("#d8dec4", 150, 650);
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.08, 2000);
     this.camera.position.set(0, 12, 17);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
@@ -246,7 +246,7 @@ export class BoardView {
 
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(66, 96),
-      new THREE.MeshStandardMaterial({ color: "#dce4e4", roughness: 0.98, metalness: 0 }),
+      new THREE.MeshStandardMaterial({ color: "#d8dec4", roughness: 0.98, metalness: 0 }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.56;
@@ -260,7 +260,7 @@ export class BoardView {
       const flat = square ? flatTile(square) : flatTrayTile(tile.id);
       const hyper = hyperbolicTile(tile);
       const flatGrid = radialGrid(flat.center, flat.boundary);
-      const color = square ? anchorColor(square) : "#70858a";
+      const color = square ? anchorColor(square) : "#c5894f";
       const material = new THREE.MeshStandardMaterial({
         color,
         emissive: "#000000",
@@ -275,7 +275,7 @@ export class BoardView {
       this.tileLayer.add(mesh);
 
       const rimGeometry = new THREE.BufferGeometry().setFromPoints(flat.boundary);
-      const rimMaterial = new THREE.LineBasicMaterial({ color: square ? "#526f76" : "#3a5864", transparent: true, opacity: square ? 0.43 : 0.56 });
+      const rimMaterial = new THREE.LineBasicMaterial({ color: square ? "#506747" : "#60452f", transparent: true, opacity: square ? 0.43 : 0.56 });
       const rim = new THREE.LineLoop(rimGeometry, rimMaterial);
       rim.visible = square !== undefined;
       this.tileLayer.add(rim);
@@ -342,7 +342,7 @@ export class BoardView {
       visual.mesh.material.color.set(color ?? baseColor(tileId));
       visual.mesh.material.emissive.set(color ?? "#000000");
       visual.mesh.material.emissiveIntensity = isSelected ? 0.28 : isDestination ? 0.17 : isRoute ? 0.08 : isThreatenedKing || isTutorialTarget ? 0.18 : 0;
-      visual.rim.material.color.set(isDestination ? "#efaa74" : isRoute || isTutorialTarget ? "#8ed1c7" : "#526f76");
+      visual.rim.material.color.set(isDestination ? "#efaa74" : isRoute || isTutorialTarget ? "#8ed1c7" : "#506747");
       visual.rim.material.opacity = isDestination ? 0.96 : isRoute || isTutorialTarget ? 0.8 : 0.43;
     }
   }
@@ -863,12 +863,12 @@ function localScale(visual: TileVisual, mode: GeometryMode): number {
 
 function baseColor(tileId: string): string {
   const square = ARENA.flatSquareByTile.get(tileId);
-  return square ? anchorColor(square) : "#71888d";
+  return square ? anchorColor(square) : "#c5894f";
 }
 
 function anchorColor(square: SquareId): string {
   const { row, col } = squareCoordinates(square);
-  return (row + col) % 2 === 0 ? "#bac9c3" : "#71888b";
+  return (row + col) % 2 === 0 ? "#eeeed2" : "#769656";
 }
 
 function writeVector(target: Float32Array, index: number, vector: THREE.Vector3): void {

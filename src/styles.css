@@ -1,21 +1,21 @@
 :root {
   color-scheme: light;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
-  color: #142334;
-  background: #d5dee0;
+  color: #263629;
+  background: #d8dec4;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --ink: #15293a;
-  --panel: #182c3b;
-  --panel-soft: #203749;
+  --ink: #283a2b;
+  --panel: #243b2b;
+  --panel-soft: #344c37;
   --line: rgba(229, 239, 238, 0.12);
-  --muted: #a3b3ba;
-  --chalk: #eef2ee;
-  --coral: #cf7550;
-  --coral-bright: #e2946b;
-  --sea: #75c8c2;
+  --muted: #bbc5ae;
+  --chalk: #f2f0df;
+  --coral: #b9824f;
+  --coral-bright: #d4ad6a;
+  --sea: #a8bd79;
   --warn: #f1bc67;
-  --board-stage: #dce4e4;
+  --board-stage: #d8dec4;
   font-optical-sizing: auto;
 }
 
@@ -26,7 +26,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #d5dee0;
+  background: #d8dec4;
 }
 
 button, input, select { font: inherit; }
@@ -86,7 +86,7 @@ button:disabled { cursor: not-allowed; opacity: 0.46; }
   min-height: 0;
   position: relative;
   overflow: hidden;
-  background: radial-gradient(ellipse at 50% 46%, #edf1eb 0%, #dde6e4 47%, #cbd8da 100%);
+  background: radial-gradient(ellipse at 50% 46%, #f0eedb 0%, #d9dfc6 47%, #c1cfad 100%);
   isolation: isolate;
 }
 
