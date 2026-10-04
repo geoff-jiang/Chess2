@@ -77,8 +77,8 @@ export class BoardView {
     private readonly onFocusChanged: (tileId: string | null) => void = () => {},
   ) {
     this.onTilePicked = onTilePicked;
-    this.scene.background = new THREE.Color("#d8dec4");
-    this.scene.fog = new THREE.Fog("#d8dec4", 150, 650);
+    this.scene.background = new THREE.Color("#efe6c4");
+    this.scene.fog = new THREE.Fog("#efe6c4", 150, 650);
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.08, 2000);
     this.camera.position.set(0, 12, 17);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
@@ -130,7 +130,7 @@ export class BoardView {
   }
 
   setTheme(dark: boolean): void {
-    const color = dark ? "#172632" : "#d8dec4";
+    const color = dark ? "#172d26" : "#efe6c4";
     this.scene.background = new THREE.Color(color);
     if (this.scene.fog instanceof THREE.Fog) this.scene.fog.color.set(color);
     this.ground?.material.color.set(color);
@@ -270,7 +270,7 @@ export class BoardView {
 
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(66, 96),
-      new THREE.MeshStandardMaterial({ color: "#d8dec4", roughness: 0.98, metalness: 0 }),
+      new THREE.MeshStandardMaterial({ color: "#efe6c4", roughness: 0.98, metalness: 0 }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.56;

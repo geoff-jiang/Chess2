@@ -29,11 +29,11 @@ if (!app) throw new Error("The app root is missing.");
 app.innerHTML = `
   <div class="app-frame">
     <header class="topbar">
-      <div class="brand" aria-label="Chess Without Borders">
+      <button id="brand-home" class="brand" type="button" aria-label="Chess Without Borders — back to menu">
         <span class="brand-mark" aria-hidden="true"></span>
         <span><span class="brand-name">Chess Without Borders</span><span class="brand-caption">A game across geometries</span></span>
-      </div>
-      <div class="topbar-tools"><div class="topbar-note"><span class="spark" aria-hidden="true">✳</span> Change the board. Find a new route.</div><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark mode">Dark mode</button></div>
+      </button>
+      <div class="topbar-tools"><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark mode">Dark mode</button></div>
     </header>
     <main class="workbench">
       <section class="board-stage" aria-label="Three-dimensional game board">
@@ -55,16 +55,20 @@ app.innerHTML = `
           <p class="lobby-copy">A full chess army. Shift geometry to open new attacks, defend your king, and change the routes your opponent must watch.</p>
           <label for="ruleset">Match rules</label>
           <select id="ruleset" class="ruleset-select"><option value="curvature">Chess Without Borders · geometry shifts</option><option value="standard">Standard chess · flat board</option></select>
-          <button id="create-room" class="primary-button" type="button"><span aria-hidden="true">＋</span> Create a private room</button>
-          <div class="join-divider">or join a player</div>
-          <form id="join-form" class="join-row">
-            <label class="visually-hidden" for="room-code">Six-character room code</label>
-            <input id="room-code" class="room-code-input" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Enter room code" aria-describedby="form-error" />
-            <button class="secondary-button" type="submit">Join</button>
-          </form>
-          <p id="form-error" class="form-error" role="status"></p>
-          <button id="local-game" class="local-link" type="button">Play locally on this device</button>
-          <button id="guided-opening" class="local-link guided-start" type="button">Explore curved routes</button>
+          <div class="play-options">
+            <button id="create-room" class="play-option play-option-primary" type="button"><span class="play-option-title">Create a private room</span><span class="play-option-copy">Invite a friend to play together.</span></button>
+            <button id="local-game" class="play-option play-option-secondary" type="button"><span class="play-option-title">Play locally on this device</span><span class="play-option-copy">Take both sides on one screen.</span></button>
+            <button id="guided-opening" class="play-option play-option-guide" type="button"><span class="play-option-title">Explore curved routes</span><span class="play-option-copy">Start with a short guided opening.</span></button>
+          </div>
+          <section class="room-block" aria-labelledby="room-block-label">
+            <div id="room-block-label" class="room-block-label">Have a room code?</div>
+            <form id="join-form" class="join-row">
+              <label class="visually-hidden" for="room-code">Six-character room code</label>
+              <input id="room-code" class="room-code-input" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Enter room code" aria-describedby="form-error" />
+              <button class="secondary-button" type="submit">Join</button>
+            </form>
+            <p id="form-error" class="form-error" role="status"></p>
+          </section>
           <section class="lobby-rules" aria-labelledby="lobby-rules-title">
             <h2 id="lobby-rules-title">Before you play</h2>
             <ul>
@@ -196,7 +200,7 @@ const boardView = new BoardView(boardElement, onTilePicked, (tileId) => previewM
 });
 function applyTheme(): void {
   document.documentElement.dataset.theme = darkTheme ? "dark" : "light";
-  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", darkTheme ? "#121f29" : "#243b2b");
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", darkTheme ? "#132a23" : "#12352c");
   const toggle = element<HTMLButtonElement>("theme-toggle");
   toggle.textContent = darkTheme ? "Light mode" : "Dark mode";
   toggle.setAttribute("aria-label", `Switch to ${darkTheme ? "light" : "dark"} mode`);
@@ -364,6 +368,7 @@ element<HTMLButtonElement>("rematch-button").addEventListener("click", () => {
 });
 element<HTMLButtonElement>("home-button").addEventListener("click", returnToMenu);
 element<HTMLButtonElement>("finish-home").addEventListener("click", returnToMenu);
+element<HTMLButtonElement>("brand-home").addEventListener("click", returnToMenu);
 element<HTMLButtonElement>("resign-button").addEventListener("click", () => {
   if (!gameState || gameState.status.kind !== "playing" || pendingAction) return;
   const resigningSide = matchKind === "local" ? gameState.activePlayer : seat;
