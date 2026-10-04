@@ -50,23 +50,45 @@ app.innerHTML = `
       </section>
       <aside class="side-panel">
         <section id="lobby-panel" class="lobby-panel">
-          <div class="lobby-kicker">A two-player strategy game</div>
           <h1 class="lobby-title">Two geometries.<br>One shared board.</h1>
+          <div class="lobby-kicker">A two-player strategy game</div>
           <p class="lobby-copy">A full chess army. Shift geometry to open new attacks, defend your king, and change the routes your opponent must watch.</p>
           <label for="ruleset">Match rules</label>
           <select id="ruleset" class="ruleset-select"><option value="curvature">Curvature chess · geometry shifts</option><option value="standard">Standard chess · flat board</option></select>
-          <button id="create-room" class="primary-button" type="button"><span aria-hidden="true">＋</span> Create a private room</button>
-          <div class="join-divider">or join a player</div>
-          <form id="join-form" class="join-row">
-            <label class="visually-hidden" for="room-code">Six-character room code</label>
-            <input id="room-code" class="room-code-input" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Enter room code" aria-describedby="form-error" />
-            <button class="secondary-button" type="submit">Join</button>
-          </form>
-          <p id="form-error" class="form-error" role="status"></p>
-          <button id="local-game" class="local-link" type="button">Try a local match on this device</button>
-          <button id="guided-opening" class="local-link guided-start" type="button">Explore curved routes</button>
+          <div class="play-options">
+            <button id="local-game" class="play-option play-option-primary" type="button"><span class="play-option-title">Local match</span><span class="play-option-copy">Play both sides on this device</span></button>
+            <button id="guided-opening" class="play-option play-option-secondary" type="button"><span class="play-option-title">Explore curved routes</span><span class="play-option-copy">A guided Curvature opening</span></button>
+            <button id="rules-open" class="play-option play-option-outline" type="button"><span class="play-option-title">Rules</span><span class="play-option-copy">How pieces move and geometry shifts work</span></button>
+          </div>
+          <div class="room-block">
+            <div class="room-block-label">Private room</div>
+            <button id="create-room" class="primary-button" type="button">Create a room</button>
+            <form id="join-form" class="join-row">
+              <label class="visually-hidden" for="room-code">Six-character room code</label>
+              <input id="room-code" class="room-code-input" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Room code" aria-describedby="form-error" />
+              <button class="secondary-button" type="submit">Join</button>
+            </form>
+            <p id="form-error" class="form-error" role="status"></p>
+            <p class="lobby-note">No account needed. Share a room link with one other player.</p>
+          </div>
           <details class="analysis-position"><summary>Local analysis position</summary><label for="position-fen">Starting position (FEN)</label><textarea id="position-fen" rows="3" placeholder="Leave blank for the full starting board"></textarea><p>Used when starting a local match. Invalid positions are rejected.</p></details>
-          <div class="lobby-note">No account needed. Share a room link with one other player to begin.</div>
+        </section>
+
+        <section id="rules-panel" class="rules-panel" hidden>
+          <button id="rules-back" class="rules-back" type="button">← Menu</button>
+          <h1 class="rules-title">Rules</h1>
+          <p class="rules-lead">Play a familiar opening, then change the routes by changing the board.</p>
+          <h2>A turn</h2>
+          <ul>
+            <li>Move one piece, or spend your turn shifting between flat and curved geometry.</li>
+            <li>Preview a shift before committing it. After a shift, two piece moves must happen before the next shift.</li>
+            <li>A shift must leave your king safe. A king outside the 64 anchor tiles prevents a return to flat geometry.</li>
+          </ul>
+          <h2>Winning</h2>
+          <p>Checkmate wins. You cannot capture a king or leave your own king in check. A safe geometry shift can answer check in Curvature chess.</p>
+          <h2>The two geometries</h2>
+          <p>Flat pieces follow standard chess rules, including castling, en passant, and promotion. On the curved board, rooks travel through opposite edges, bishops follow alternating turns, queens combine those routes, and pawns carry their forward direction from tile to tile. Select a destination to inspect its route before moving.</p>
+          <p>Pieces outside the flat board's anchor tiles become inactive shadows until curved geometry returns. Choose Standard chess in the lobby for a flat-only match.</p>
         </section>
 
         <section id="match-panel" class="match-panel" hidden>
@@ -84,11 +106,11 @@ app.innerHTML = `
             <div id="black-seat" class="player-seat"><div class="player-topline"><span class="player-stone black"></span> Black</div><div class="player-bottomline"><span id="black-role">Player two</span><span id="black-connection" class="connection offline">Waiting</span></div></div>
           </div>
 
-          <section class="rail-section" aria-labelledby="geometry-heading">
+          <section class="rail-section geometry-card" aria-labelledby="geometry-heading">
             <div class="section-heading"><span id="geometry-heading">Board geometry</span><span id="geometry-state-caption" class="section-caption">Shared state</span></div>
             <div class="mode-switch" role="group" aria-label="Preview board geometry">
-              <button id="flat-preview" class="mode-choice" type="button" aria-pressed="true"><span class="mode-symbol" aria-hidden="true">▦</span> Flat</button>
-              <button id="hyperbolic-preview" class="mode-choice" type="button" aria-pressed="false"><span class="mode-symbol" aria-hidden="true">◒</span> Curved</button>
+              <button id="flat-preview" class="mode-choice" type="button" aria-pressed="true"><span class="mode-symbol" aria-hidden="true">▦</span><span class="mode-choice-copy"><span class="mode-choice-name">Flat</span><span class="mode-choice-detail">8×8 grid</span></span></button>
+              <button id="hyperbolic-preview" class="mode-choice" type="button" aria-pressed="false"><span class="mode-symbol" aria-hidden="true">◒</span><span class="mode-choice-copy"><span class="mode-choice-name">Curved</span><span class="mode-choice-detail">Hyperbolic</span></span></button>
             </div>
             <p id="mode-help" class="mode-help">Pieces use the familiar 8×8 square grid.</p>
             <p id="shift-lock" class="shift-lock ready">A geometry shift is available.</p>
@@ -260,6 +282,8 @@ element<HTMLFormElement>("join-form").addEventListener("submit", (event) => {
 
 element<HTMLButtonElement>("local-game").addEventListener("click", () => startLocalGame(false));
 element<HTMLButtonElement>("guided-opening").addEventListener("click", () => startLocalGame(true));
+element<HTMLButtonElement>("rules-open").addEventListener("click", () => showRules(true));
+element<HTMLButtonElement>("rules-back").addEventListener("click", () => showRules(false));
 
 function startLocalGame(withGuide: boolean): void {
   const fen = element<HTMLTextAreaElement>("position-fen").value.trim();
@@ -767,6 +791,7 @@ function setLobbyPending(isPending: boolean): void {
   element<HTMLButtonElement>("create-room").disabled = isPending;
   element<HTMLInputElement>("room-code").disabled = isPending;
   element<HTMLButtonElement>("local-game").disabled = isPending;
+  element<HTMLButtonElement>("guided-opening").disabled = isPending;
   const join = document.querySelector<HTMLFormElement>("#join-form button[type=submit]");
   if (join) join.disabled = isPending;
 }
@@ -780,8 +805,14 @@ function setConnectionStatus(status: "connecting" | "connected" | "offline"): vo
   clientConnectionStatus = status;
 }
 
+function showRules(open: boolean): void {
+  element<HTMLElement>("lobby-panel").hidden = open;
+  element<HTMLElement>("rules-panel").hidden = !open;
+}
+
 function showMatchPanel(): void {
   element<HTMLElement>("lobby-panel").hidden = true;
+  element<HTMLElement>("rules-panel").hidden = true;
   element<HTMLElement>("match-panel").hidden = false;
 }
 

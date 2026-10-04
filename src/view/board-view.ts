@@ -71,8 +71,8 @@ export class BoardView {
     private readonly onFocusChanged: (tileId: string | null) => void = () => {},
   ) {
     this.onTilePicked = onTilePicked;
-    this.scene.background = new THREE.Color("#d8dec4");
-    this.scene.fog = new THREE.Fog("#d8dec4", 150, 650);
+    this.scene.background = new THREE.Color("#efe6c4");
+    this.scene.fog = new THREE.Fog("#efe6c4", 150, 650);
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.08, 2000);
     this.camera.position.set(0, 12, 17);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
@@ -236,17 +236,17 @@ export class BoardView {
   }
 
   private addLighting(): void {
-    this.scene.add(new THREE.HemisphereLight("#f7faf2", "#627984", 2.25));
-    const key = new THREE.DirectionalLight("#fff5e8", 2.1);
+    this.scene.add(new THREE.HemisphereLight("#f8f3e2", "#6d7a62", 2.1));
+    const key = new THREE.DirectionalLight("#fff6e4", 2.15);
     key.position.set(-7, 17, 9);
     this.scene.add(key);
-    const fill = new THREE.DirectionalLight("#9ccac7", 0.7);
+    const fill = new THREE.DirectionalLight("#efe0c0", 0.42);
     fill.position.set(10, 6, -8);
     this.scene.add(fill);
 
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(66, 96),
-      new THREE.MeshStandardMaterial({ color: "#d8dec4", roughness: 0.98, metalness: 0 }),
+      new THREE.MeshStandardMaterial({ color: "#efe6c4", roughness: 0.98, metalness: 0 }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.56;
@@ -260,7 +260,7 @@ export class BoardView {
       const flat = square ? flatTile(square) : flatTrayTile(tile.id);
       const hyper = hyperbolicTile(tile);
       const flatGrid = radialGrid(flat.center, flat.boundary);
-      const color = square ? anchorColor(square) : "#c5894f";
+      const color = baseColor(tile.id);
       const material = new THREE.MeshStandardMaterial({
         color,
         emissive: "#000000",
@@ -275,7 +275,8 @@ export class BoardView {
       this.tileLayer.add(mesh);
 
       const rimGeometry = new THREE.BufferGeometry().setFromPoints(flat.boundary);
-      const rimMaterial = new THREE.LineBasicMaterial({ color: square ? "#506747" : "#60452f", transparent: true, opacity: square ? 0.43 : 0.56 });
+      const edge = rimStyle(tile.id);
+      const rimMaterial = new THREE.LineBasicMaterial({ color: edge.color, transparent: true, opacity: edge.opacity });
       const rim = new THREE.LineLoop(rimGeometry, rimMaterial);
       rim.visible = square !== undefined;
       this.tileLayer.add(rim);
@@ -311,7 +312,7 @@ export class BoardView {
     context.strokeStyle = "rgba(239, 242, 229, .3)";
     context.lineWidth = 2;
     context.stroke();
-    context.fillStyle = "#f2f1e7";
+    context.fillStyle = "#f7f1e6";
     context.font = "600 34px Avenir Next, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
@@ -338,12 +339,12 @@ export class BoardView {
       const isRoute = routeTiles.has(tileId) && !isSelected && !isDestination;
       const isThreatenedKing = activeKing?.tileId === tileId && kingThreatened;
       const isTutorialTarget = tileId === this.tutorialTileId;
-      const color = isThreatenedKing ? "#c85c47" : isSelected ? "#d69a52" : isDestination ? "#d27d4d" : isRoute ? "#477b7c" : isTutorialTarget ? "#75c8c2" : null;
+      const color = isThreatenedKing ? "#c85c47" : isSelected ? "#e2b15a" : isDestination ? "#d4a24a" : isRoute ? "#2f6b52" : isTutorialTarget ? "#7dcea0" : null;
       visual.mesh.material.color.set(color ?? baseColor(tileId));
       visual.mesh.material.emissive.set(color ?? "#000000");
       visual.mesh.material.emissiveIntensity = isSelected ? 0.28 : isDestination ? 0.17 : isRoute ? 0.08 : isThreatenedKing || isTutorialTarget ? 0.18 : 0;
-      visual.rim.material.color.set(isDestination ? "#efaa74" : isRoute || isTutorialTarget ? "#8ed1c7" : "#506747");
-      visual.rim.material.opacity = isDestination ? 0.96 : isRoute || isTutorialTarget ? 0.8 : 0.43;
+      visual.rim.material.color.set(isDestination ? "#f0d48a" : isRoute || isTutorialTarget ? "#b7d7c4" : rimStyle(tileId).color);
+      visual.rim.material.opacity = isDestination ? 0.96 : isRoute || isTutorialTarget ? 0.8 : rimStyle(tileId).opacity;
     }
   }
 
@@ -472,10 +473,9 @@ export class BoardView {
   private makePiece(piece: Piece): THREE.Group {
     const group = new THREE.Group();
     const isWhite = piece.side === "white";
-    const mainColor = isWhite ? "#e8e2d5" : "#263f51";
-    const edgeColor = isWhite ? "#81979a" : "#8cc4bb";
-    const material = new THREE.MeshStandardMaterial({ color: mainColor, roughness: 0.39, metalness: 0.22, flatShading: true });
-    const trim = new THREE.MeshStandardMaterial({ color: edgeColor, roughness: 0.36, metalness: 0.42 });
+    const mainColor = isWhite ? "#f8f6ef" : "#1a2330";
+    const material = new THREE.MeshStandardMaterial({ color: mainColor, roughness: isWhite ? 0.46 : 0.4, metalness: isWhite ? 0.06 : 0.18, flatShading: true });
+    const trim = new THREE.MeshStandardMaterial({ color: "#c4a574", roughness: 0.32, metalness: 0.55 });
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.12, 10), trim);
     base.position.y = 0.07;
     group.add(base);
@@ -505,24 +505,29 @@ export class BoardView {
       body.scale.y = 1.27;
       body.position.y = 0.39;
       group.add(body);
-    } else if (piece.type === "pawn") {
-      body = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.23, 0.3, 12), material);
-      body.position.y = 0.28;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), material);
-      head.position.y = 0.51;
-      group.add(body, head);
+    } else if (piece.type === "bishop") {
+      body = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.58, 8), material);
+      body.position.y = 0.4;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), material);
+      head.position.y = 0.68;
+      const slit = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.16, 0.16), trim);
+      slit.position.y = 0.7;
+      group.add(body, head, slit);
     } else if (piece.type === "queen") {
-      body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.28, 0.43, 12), material);
-      body.position.y = 0.34;
-      const crown = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 6, 12), trim);
-      crown.rotation.x = Math.PI / 2;
-      crown.position.y = 0.61;
-      group.add(body, crown);
-      for (let index = 0; index < 5; index++) {
-        const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), trim);
-        jewel.position.set(Math.cos(index * Math.PI * 2 / 5) * 0.22, 0.68, Math.sin(index * Math.PI * 2 / 5) * 0.22);
-        group.add(jewel);
-      }
+      body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 0.5, 8), material);
+      body.position.y = 0.38;
+      const collar = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.035, 6, 10), trim);
+      collar.rotation.x = Math.PI / 2;
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), material);
+      collar.position.y = 0.62;
+      crown.position.y = 0.74;
+      group.add(body, collar, crown);
+    } else if (piece.type === "pawn") {
+      body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), material);
+      body.position.y = 0.28;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.15, 0.14, 8), trim);
+      neck.position.y = 0.16;
+      group.add(body, neck);
     } else {
       body = new THREE.Mesh(new THREE.ConeGeometry(0.29, 0.49, 4, 1), material);
       body.rotation.y = Math.PI / 4;
@@ -533,7 +538,7 @@ export class BoardView {
       group.add(body, band);
     }
     const tag = this.makePieceLabel(piece.type, isWhite);
-    tag.position.y = piece.type === "king" ? 0.91 : 0.8;
+    tag.position.y = piece.type === "queen" || piece.type === "bishop" ? 1.02 : piece.type === "king" ? 0.91 : piece.type === "pawn" ? 0.52 : 0.8;
     group.add(tag);
     return group;
   }
@@ -546,12 +551,12 @@ export class BoardView {
     if (!context) throw new Error("Canvas piece labels are unavailable.");
     context.beginPath();
     context.arc(48, 48, 39, 0, Math.PI * 2);
-    context.fillStyle = isWhite ? "#273f4b" : "#e3e8de";
+    context.fillStyle = isWhite ? "#1a2330" : "#f4e6b2";
     context.fill();
-    context.strokeStyle = isWhite ? "#e3e8de" : "#425867";
+    context.strokeStyle = "#c4a574";
     context.lineWidth = 3;
     context.stroke();
-    context.fillStyle = isWhite ? "#f2eee3" : "#203b4b";
+    context.fillStyle = isWhite ? "#f8f6ef" : "#1a2330";
     context.font = "700 48px Avenir Next, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
@@ -863,12 +868,21 @@ function localScale(visual: TileVisual, mode: GeometryMode): number {
 
 function baseColor(tileId: string): string {
   const square = ARENA.flatSquareByTile.get(tileId);
-  return square ? anchorColor(square) : "#c5894f";
+  return square ? anchorColor(square) : "#c48b72";
 }
 
 function anchorColor(square: SquareId): string {
   const { row, col } = squareCoordinates(square);
-  return (row + col) % 2 === 0 ? "#eeeed2" : "#769656";
+  return (row + col) % 2 === 0 ? "#f4e6b2" : "#1a5c4a";
+}
+
+function rimStyle(tileId: string): { color: string; opacity: number } {
+  const square = ARENA.flatSquareByTile.get(tileId);
+  if (!square) return { color: "#9a6552", opacity: 0.78 };
+  const { row, col } = squareCoordinates(square);
+  return (row + col) % 2 === 0
+    ? { color: "#d4c48a", opacity: 0.75 }
+    : { color: "#0e3d32", opacity: 0.82 };
 }
 
 function writeVector(target: Float32Array, index: number, vector: THREE.Vector3): void {
