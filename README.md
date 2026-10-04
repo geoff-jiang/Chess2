@@ -36,7 +36,7 @@ Each side begins with a king, rook, knight, and guard. The mirrored flat startin
 
 In flat mode, only the 64 anchor tiles are active. Kings move one square in any direction, rooks move orthogonally, knights use the familiar two-plus-one jump, and guards move one orthogonal square. An extra-tile piece becomes a shadow: its original tile and piece are preserved, but it is hidden from the flat board and cannot move, capture, block, or be captured there.
 
-In hyperbolic mode, rooks follow tile-center rays and continue through the opposite edge of each square; their route stops at the first piece or arena boundary. Knights move two steps along one such ray, then one edge to either side, jumping over intervening pieces. Kings may land on anchor tiles sharing an edge or corner. Guards move to an edge-neighbor. Captures happen only on the destination tile.
+In hyperbolic mode, rooks follow tile-center rays and continue through the opposite edge of each square; their route stops at the first piece or arena boundary. Knights move two steps along one such ray, then one edge to either side, jumping over intervening pieces. Kings may land on any tile sharing an edge or corner. Both kings must return to anchor tiles before either player can shift to flat geometry: a king cannot escape capture by becoming a shadow. Guards move to an edge-neighbor. Captures happen only on the destination tile.
 
 King threats are displayed, but a player may leave a king threatened; this first version has no checkmate, castling, en passant, pawns, bishops, or promotion. Capturing the king is the win condition.
 
@@ -47,6 +47,8 @@ The rules engine generates the arena by reflecting a regular hyperbolic square a
 The generated arena has 32 pairs of opposite noncentral tiles among the anchors. The 64 flat squares are paired by a half-turn and assigned to those tile pairs in deterministic ring and tile ID order. This uses the arena's stable generated IDs, avoiding floating-point angle sorting across server and browser runtimes. The map is versioned and identical for every match. It links two different game spaces; it does not preserve the square grid's distances or neighbors when the geometry changes.
 
 ## Project layout
+
+See [the geometry and interaction review](docs/geometry-review.md) for diagnosed defects, implemented corrections, and the remaining gameplay design and visual acceptance work.
 
 - `src/shared/geometry.ts` builds the arena, edge graph, corner graph, and anchor map.
 - `src/shared/game.ts` owns the serializable match state, legal destinations, shifts, captures, threats, history, and repetition draws.

@@ -503,14 +503,17 @@ function renderGeometryControls(state: GameState): void {
       : "Rooks follow center-crossing routes through the five-around-a-corner tiling.";
 
   const lock = element<HTMLParagraphElement>("shift-lock");
+  const kingOutside = state.pieces.some((piece) => piece.type === "king" && !ARENA.flatSquareByTile.has(piece.tileId));
   lock.className = `shift-lock ${state.shiftCooldown === 0 ? "ready" : ""}`;
-  lock.textContent = state.shiftCooldown === 0
+  lock.textContent = kingOutside
+    ? "Return both kings to anchor tiles before shifting to flat geometry."
+    : state.shiftCooldown === 0
     ? "A geometry shift is available. It uses your turn."
     : `Shift locked · ${state.shiftCooldown} piece move${state.shiftCooldown === 1 ? "" : "s"} remaining`;
   const shift = element<HTMLButtonElement>("commit-shift");
   const showingUncommittedMode = previewMode !== null && previewMode !== state.mode;
   shift.hidden = !showingUncommittedMode;
-  shift.disabled = !canSubmitAction() || state.shiftCooldown > 0;
+  shift.disabled = !canSubmitAction() || state.shiftCooldown > 0 || (previewMode === "flat" && kingOutside);
   shift.textContent = `Commit ${capitalize(previewMode ?? state.mode)} shift · spend this turn`;
 }
 

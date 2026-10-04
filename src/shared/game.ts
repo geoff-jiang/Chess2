@@ -121,7 +121,7 @@ export function applyAction(state: GameState, action: GameAction, arena: Arena =
     }
     const strandedKing = pieces.find((piece) => piece.type === "king" && !arena.flatSquareByTile.has(piece.tileId));
     if (action.toMode === "flat" && strandedKing) {
-      throw new RuleViolation("invalid-shift", "Kings must remain on the 8×8 anchor board.");
+      throw new RuleViolation("invalid-shift", "Return both kings to anchor tiles before shifting to flat geometry.");
     }
     mode = action.toMode;
     shiftCooldown = 2;
@@ -310,7 +310,7 @@ function hyperbolicMoves(
     for (const [toTileId, route] of destinations) addMoveAndReportOccupancy(toTileId, route, moves);
   } else if (piece.type === "king") {
     for (const toTileId of arena.touchNeighbors.get(piece.tileId) ?? []) {
-      if (arena.flatSquareByTile.has(toTileId)) addMoveAndReportOccupancy(toTileId, [piece.tileId, toTileId], moves);
+      addMoveAndReportOccupancy(toTileId, [piece.tileId, toTileId], moves);
     }
   } else {
     for (const link of sourceTile.neighbors) {

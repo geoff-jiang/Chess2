@@ -130,7 +130,7 @@ test("hyperbolic rook routes use graph rays rather than screen distance", () => 
   );
 });
 
-test("hyperbolic kings may touch corners but may only land on anchors", () => {
+test("hyperbolic kings use the full corner graph and prevent a flat escape off anchors", () => {
   const source = [...ARENA.anchors.values()].find((tileId) =>
     [...(ARENA.touchNeighbors.get(tileId) ?? [])].some((neighbor) => !ARENA.flatSquareByTile.has(neighbor)),
   );
@@ -138,7 +138,11 @@ test("hyperbolic kings may touch corners but may only land on anchors", () => {
   const state = stateWith([piece("white-king", "white", "king", source, "hyperbolic")], "hyperbolic");
   const moves = getLegalMoves(state, "white-king");
   assert.ok(moves.length > 0);
-  assert.ok(moves.every((move) => ARENA.flatSquareByTile.has(move.toTileId)));
+  assert.equal(moves.length, ARENA.touchNeighbors.get(source)!.size);
+  const extra = moves.find((move) => !ARENA.flatSquareByTile.has(move.toTileId))!;
+  assert.ok(extra);
+  const moved = applyAction(state, { kind: "move", pieceId: "white-king", toTileId: extra.toTileId });
+  assert.throws(() => applyAction(moved, { kind: "shift", toMode: "flat" }), /Return both kings/);
 });
 
 function tile(square: string): string {

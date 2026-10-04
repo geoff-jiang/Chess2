@@ -4,6 +4,7 @@ import { isInCheck, isShadow, type GameState, type GeometryMode, type MoveOption
 import { ARENA, edgeMidpoint, squareCoordinates, type HyperbolicTile, type SquareId, type Vector3 } from "../shared/geometry.ts";
 import { pieceLetter } from "../shared/labels.ts";
 import { displayNormal, toDisplayPoint } from "./hyperbolic-display.ts";
+import { overviewDistance } from "./camera-fit.ts";
 
 const EDGE_STEPS = 8;
 const EDGE_POINTS = EDGE_STEPS * 4;
@@ -57,6 +58,8 @@ export class BoardView {
   private focusedTileId: string | null = null;
   private pressedAt: { x: number; y: number; button: number } | null = null;
   private resetButton: HTMLButtonElement | null = null;
+  private overview = true;
+  private wholeArena = false;
 
   constructor(container: HTMLElement, onTilePicked: (tileId: string, pieceId: string | null) => void) {
     this.onTilePicked = onTilePicked;
@@ -87,6 +90,7 @@ export class BoardView {
     this.controls.maxDistance = 500;
     this.controls.minPolarAngle = 0.08;
     this.controls.maxPolarAngle = Math.PI * 0.49;
+    this.controls.addEventListener("start", () => { this.overview = false; });
     this.setOverviewPose("flat");
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -121,10 +125,14 @@ export class BoardView {
     interactive: boolean,
   ): void {
     if (mode !== this.renderMode) {
+      if (this.isMorphing) this.updateTilePositions(1);
       this.morphFrom = this.renderMode;
       this.renderMode = mode;
       this.morphStartedAt = performance.now();
       this.isMorphing = true;
+      this.pieceLayer.visible = false;
+      this.routeLayer.visible = false;
+      this.markerLayer.visible = false;
       this.focusedTileId = null;
       this.setOverviewPose(mode);
     }
@@ -140,10 +148,13 @@ export class BoardView {
   focusTile(tileId: string): void {
     const visual = this.tileVisuals.get(tileId);
     if (!visual) return;
+    this.overview = false;
     this.focusedTileId = tileId;
     const position = this.getTilePosition(visual);
     const offset = this.camera.position.clone().sub(this.controls.target);
-    const desiredDistance = this.renderMode === "hyperbolic" ? Math.max(16, localScale(visual, this.renderMode) * 10) : offset.length();
+    const desiredDistance = this.renderMode === "hyperbolic"
+      ? overviewDistance(Math.max(1, localScale(visual, this.renderMode) * 2), this.camera.fov, this.camera.aspect)
+      : offset.length();
     offset.setLength(desiredDistance);
     this.camera.position.copy(position).add(offset);
     this.controls.target.copy(position);
@@ -151,12 +162,21 @@ export class BoardView {
   }
 
   private setOverviewPose(mode: GeometryMode, wholeArena = false): void {
-    this.controls.target.set(0, 0, 0);
+    this.overview = true;
+    this.wholeArena = wholeArena;
+    const bounds = new THREE.Box3();
+    for (const [tileId, visual] of this.tileVisuals) {
+      if (mode === "flat" && !ARENA.flatSquareByTile.has(tileId)) continue;
+      for (const point of mode === "flat" ? visual.flatBoundary : visual.hyperBoundary) bounds.expandByPoint(point);
+    }
+    const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+    this.controls.target.copy(sphere.center);
     const direction = mode === "hyperbolic"
       ? wholeArena ? new THREE.Vector3(0, 0.97, 0.25).normalize() : new THREE.Vector3(0, 0.72, 0.69).normalize()
       : new THREE.Vector3(0, 12, 17).normalize();
-    const distance = mode === "hyperbolic" ? wholeArena ? 28 : 26 : 20.8;
-    this.camera.position.copy(direction.multiplyScalar(distance));
+    const distance = overviewDistance(sphere.radius + 1, this.camera.fov, this.camera.aspect);
+    this.controls.maxDistance = Math.max(500, distance * 2);
+    this.camera.position.copy(sphere.center).add(direction.multiplyScalar(distance));
     this.controls.update();
   }
 
@@ -432,7 +452,12 @@ export class BoardView {
       const progress = THREE.MathUtils.clamp((performance.now() - this.morphStartedAt) / 760, 0, 1);
       const eased = progress * progress * (3 - 2 * progress);
       this.updateTilePositions(eased);
-      if (progress >= 1) this.isMorphing = false;
+      if (progress >= 1) {
+        this.isMorphing = false;
+        this.pieceLayer.visible = true;
+        this.routeLayer.visible = true;
+        this.markerLayer.visible = true;
+      }
     }
     this.renderer.render(this.scene, this.camera);
   };
@@ -464,12 +489,14 @@ export class BoardView {
       positionAttribute.array.set(positions);
       positionAttribute.needsUpdate = true;
       visual.mesh.geometry.computeVertexNormals();
+      visual.mesh.geometry.computeBoundingSphere();
       const rimAttribute = visual.rim.geometry.getAttribute("position") as THREE.BufferAttribute;
       for (let index = 0; index < EDGE_POINTS; index += 1) {
         const lifted = boundary[index].clone().addScaledVector(normal, 0.012);
         rimAttribute.setXYZ(index, lifted.x, lifted.y, lifted.z);
       }
       rimAttribute.needsUpdate = true;
+      visual.rim.geometry.computeBoundingSphere();
       visual.mesh.visible = this.renderMode === "hyperbolic" || isAnchor;
       visual.rim.visible = visual.mesh.visible;
       if (visual.label) {
@@ -488,7 +515,10 @@ export class BoardView {
       this.pressedAt = { x: event.clientX, y: event.clientY, button: event.button };
     });
     canvas.addEventListener("pointerup", (event) => {
-      if (!this.pressedAt || this.pressedAt.button !== 0 || !this.interactive) return;
+      if (!this.pressedAt || this.pressedAt.button !== 0 || !this.interactive || this.isMorphing) {
+        this.pressedAt = null;
+        return;
+      }
       const moved = Math.hypot(event.clientX - this.pressedAt.x, event.clientY - this.pressedAt.y);
       this.pressedAt = null;
       if (moved > 5) return;
@@ -509,6 +539,7 @@ export class BoardView {
     });
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     canvas.addEventListener("pointerleave", () => { this.pressedAt = null; });
+    canvas.addEventListener("pointercancel", () => { this.pressedAt = null; });
   }
 
   private resize(): void {
@@ -517,6 +548,7 @@ export class BoardView {
     this.camera.aspect = rect.width / rect.height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(rect.width, rect.height, false);
+    if (this.overview) this.setOverviewPose(this.renderMode, this.wholeArena);
   }
 }
 
@@ -639,16 +671,16 @@ function routeDisplayPoints(route: string[], mode: GeometryMode): THREE.Vector3[
     const nextId = route[index + 1];
     if (!nextId) continue;
     if (mode === "hyperbolic" && current) {
-      const link = current.neighbors.find((candidate) => candidate?.tileId === nextId);
+      const exitEdge = current.neighbors.findIndex((candidate) => candidate?.tileId === nextId);
       const nextTile = ARENA.tiles.get(nextId);
-      if (link && nextTile) {
-        const midpoint = edgeMidpoint(current.vertices, link.edgeIndex);
+      if (exitEdge >= 0 && nextTile) {
+        const midpoint = edgeMidpoint(current.vertices, exitEdge);
         result.push(toDisplayPoint(midpoint));
       }
     }
     result.push(tileCenter(nextId, mode) ?? visualCenter);
   }
-  return result;
+  return result.map((point) => point.clone().add(new THREE.Vector3(0, 0.06, 0)));
 }
 
 function tileCenter(tileId: string, mode: GeometryMode): THREE.Vector3 | null {
@@ -677,8 +709,8 @@ function geodesicPoint(first: Vector3, second: Vector3, progress: number): Vecto
 
 function localScale(visual: TileVisual, mode: GeometryMode): number {
   if (mode === "flat") return 1;
-  const radius = visual.hyperBoundary.reduce((total, point) => total + point.distanceTo(visual.hyperCenter), 0) / EDGE_POINTS;
-  return THREE.MathUtils.clamp(radius / 0.72, 0.82, 18);
+  const radius = Math.min(...visual.hyperBoundary.map((point) => point.distanceTo(visual.hyperCenter)));
+  return THREE.MathUtils.clamp(radius / 0.5, 0.12, 2);
 }
 
 function baseColor(tileId: string): string {
