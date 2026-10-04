@@ -123,5 +123,3 @@ export function pawnForwardEdge(piece: Piece, arena: Arena): number {
   }
   return best;
 }
-
-
