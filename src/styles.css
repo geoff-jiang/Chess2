@@ -48,7 +48,9 @@ button, input, select { font: inherit; }
 .analysis-position textarea::placeholder { color: var(--muted); opacity: .85; }
 .analysis-position p { margin: 8px 0 0; line-height: 1.5; }
 .piece-choices, .destination-choices { display: flex; flex-wrap: wrap; gap: 6px; }
-.destination-choices { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.legal-moves-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 15px 0 8px; color: var(--chalk); font-size: 14px; font-weight: 700; }
+.legal-moves-heading span:last-child { color: var(--muted); font-size: 12px; font-weight: 500; }
+.destination-choices { color: var(--muted); font-size: 13px; line-height: 1.45; }
 .piece-choices button, .destination-choices button { padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-soft); color: var(--chalk); font-size: 13px; font-weight: 600; }
 .piece-choices button[aria-pressed="true"] { border-color: var(--cream); background: #245848; }
 .destination-choices button[aria-pressed="true"] { border-color: var(--cream); background: #64511e; }
@@ -261,6 +263,9 @@ button:disabled { cursor: not-allowed; opacity: 0.46; }
 .tile-swatch.extra { background: var(--extra-tile); }
 .destination-choices .curved-only-destination { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; border-color: #8b96d0; background: #303b60; }
 .destination-choices .curved-only-destination[aria-pressed="true"] { color: #202644; background: var(--extra-highlight); border-color: #fff; }
+.destination-choices .capture-destination { position: relative; padding-right: 25px; border-color: #e78979; background: #53362f; color: #fff1e9; }
+.destination-choices .capture-destination[aria-pressed="true"] { border-color: #ffd2bd; background: #714035; box-shadow: inset 0 0 0 1px #ffd2bd; }
+.capture-badge { position: absolute; top: 6px; right: 8px; color: #ff9c8b; font-size: 16px; font-weight: 800; line-height: 1; }
 .curved-only-badge { font-size: 10px; font-weight: 700; letter-spacing: .025em; }
 .form-error { min-height: 17px; margin: 9px 0 0; color: #f0b89a; font-size: 13px; line-height: 1.45; }
 .form-error:empty { display: none; }

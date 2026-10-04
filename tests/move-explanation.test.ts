@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ARENA, rookRay } from "../src/shared/geometry.ts";
 import { diagonalRay } from "../src/shared/curvature-moves.ts";
-import { applyAction, createInitialState, getLegalMoves, type Piece } from "../src/shared/game.ts";
-import { explainMove, routeLandings } from "../src/view/move-explanation.ts";
+import { applyAction, createInitialState, createStateFromFen, getLegalMoves, type Piece } from "../src/shared/game.ts";
+import { capturedPieceForMove, explainMove, historyNote, routeLandings } from "../src/view/move-explanation.ts";
 
 test("route hints distinguish bishop guide tiles, sliding landings, and knight jumps", () => {
   const tileId = ARENA.centerTileId;
@@ -26,4 +26,25 @@ test("opening bishop explanation names the occupied guide separately from its le
   assert.match(text, /Route: C8 → D7 → E6/);
   assert.match(text, /Landing squares: E6/);
   assert.deepEqual(routeLandings(bishop, move), [2]);
+});
+
+test("history shows source and destination squares in flat and curved play", () => {
+  const state = createInitialState(ARENA, "standard");
+  const pawn = state.pieces.find((piece) => piece.tileId === ARENA.anchors.get("e2"))!;
+  const next = applyAction(state, { kind: "move", pieceId: pawn.id, toTileId: ARENA.anchors.get("e4")! });
+  assert.equal(historyNote(next.history.at(-1)!), "Pawn E2 → E4");
+  assert.equal(historyNote({
+    ply: 1, actor: "black", action: { kind: "move", pieceId: "black-knight-b8", toTileId: "h-031" },
+    notation: "Knight h-080 → h-031",
+  }), "Knight B8 → C7");
+});
+
+test("en passant appears as a capture even though its destination starts empty", () => {
+  const state = createStateFromFen("k7/8/8/3pP3/8/8/8/7K w - d6 0 1", ARENA, "standard");
+  const pawn = state.pieces.find((piece) => piece.tileId === ARENA.anchors.get("e5"))!;
+  const move = getLegalMoves(state, pawn.id).find((option) => option.toTileId === ARENA.anchors.get("d6"))!;
+  assert.equal(capturedPieceForMove(state, pawn, move)?.tileId, ARENA.anchors.get("d5"));
+  assert.match(explainMove(state, pawn, move), /^Capture the black pawn at D6\./);
+  const next = applyAction(state, { kind: "move", pieceId: pawn.id, toTileId: move.toTileId });
+  assert.equal(historyNote(next.history.at(-1)!), "Pawn E5 → D6 · takes pawn");
 });

@@ -1,8 +1,29 @@
-import { ARENA } from "../shared/geometry.ts";
-import type { GameState, MoveOption, Piece } from "../shared/game-types.ts";
+import { ARENA, type SquareId } from "../shared/geometry.ts";
+import type { GameState, HistoryItem, MoveOption, Piece } from "../shared/game-types.ts";
+import { capitalize } from "../shared/labels.ts";
 
 export function tileName(tileId: string): string {
   return ARENA.flatSquareByTile.get(tileId)?.toUpperCase() ?? `Extra ${Number(tileId.slice(2))}`;
+}
+
+export function capturedPieceForMove(state: GameState, piece: Piece, move: MoveOption): Piece | undefined {
+  const occupant = state.pieces.find((candidate) => candidate.tileId === move.toTileId && candidate.side !== piece.side);
+  if (occupant) return occupant;
+  if (state.mode !== "flat" || piece.type !== "pawn") return undefined;
+  const from = ARENA.flatSquareByTile.get(piece.tileId);
+  const to = ARENA.flatSquareByTile.get(move.toTileId);
+  if (!from || !to || from[0] === to[0] || state.fen.split(" ")[3] !== to) return undefined;
+  return state.pieces.find((candidate) => candidate.tileId === ARENA.anchors.get(`${to[0]}${from[1]}` as SquareId) && candidate.side !== piece.side);
+}
+
+export function historyNote(item: HistoryItem): string {
+  if (item.action.kind !== "move") return item.notation;
+  const fromTileId = item.fromTileId ?? item.notation.match(/h-\d{3}/)?.[0];
+  const pieceType = item.pieceType ?? item.notation.match(/^(King|Queen|Rook|Bishop|Knight|Pawn)\b/)?.[1]?.toLowerCase();
+  if (!fromTileId || !pieceType) return item.notation.replace(/h-\d{3}/g, tileName);
+  const capture = item.captured ? ` · takes ${item.captured.type}` : "";
+  const promotion = item.action.promotion ? ` · promotes to ${item.action.promotion}` : "";
+  return `${capitalize(pieceType)} ${tileName(fromTileId)} → ${tileName(item.action.toTileId)}${capture}${promotion}`;
 }
 
 export function movementHelp(piece: Piece): string {
@@ -17,7 +38,7 @@ export function movementHelp(piece: Piece): string {
 }
 
 export function explainMove(state: GameState, piece: Piece, move: MoveOption): string {
-  const target = state.pieces.find((candidate) => candidate.tileId === move.toTileId);
+  const target = capturedPieceForMove(state, piece, move);
   const route = move.route.map(tileName).join(" → ");
   const result = target ? `Capture the ${target.side} ${target.type} at` : "Move to";
   const promotion = move.promotion ? " Choose a promotion piece when you move." : "";

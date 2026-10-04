@@ -33,6 +33,9 @@ export interface HistoryItem {
   actor: Side;
   action: GameAction;
   notation: string;
+  /** Source location and piece before a move, for explicit history labels. */
+  fromTileId?: string;
+  pieceType?: PieceType;
   captured?: Piece;
 }
 export interface GameState {

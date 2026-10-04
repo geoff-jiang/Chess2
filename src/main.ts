@@ -4,7 +4,7 @@ import { fenFromPieces, PROMOTIONS, standardPosition } from "./shared/standard-c
 import { ARENA } from "./shared/geometry.ts";
 import { capitalize, pieceLetter } from "./shared/labels.ts";
 import { BoardView } from "./view/board-view.ts";
-import { explainMove, movementHelp, tileName } from "./view/move-explanation.ts";
+import { capturedPieceForMove, explainMove, historyNote, movementHelp, tileName } from "./view/move-explanation.ts";
 
 interface RoomSnapshot {
   type: "snapshot";
@@ -116,7 +116,7 @@ app.innerHTML = `
             <h2 id="opening-guide-title" class="opening-guide-title"></h2>
             <p id="opening-guide-copy" class="opening-guide-copy"></p>
           </section>
-          <section class="rail-section" aria-labelledby="moves-heading"><div class="section-heading"><span id="moves-heading">Pieces and destinations</span></div><div id="piece-choices" class="piece-choices"></div><div id="destination-choices" class="destination-choices"></div></section>
+          <section class="rail-section" aria-labelledby="moves-heading"><div class="section-heading"><span id="moves-heading">Pieces and destinations</span></div><div id="piece-choices" class="piece-choices"></div><div class="legal-moves-heading"><span id="legal-moves-label">Legal moves</span><span id="legal-moves-count"></span></div><div id="destination-choices" class="destination-choices" aria-labelledby="legal-moves-label"></div></section>
           <section id="move-inspector" class="move-inspector" aria-label="Curved move preview" hidden>
             <strong id="move-inspector-title">Plan your move</strong>
             <p id="movement-help"></p>
@@ -655,12 +655,11 @@ function render(): void {
   previewMove(null);
   const selectedReadout = element<HTMLDivElement>("selected-readout");
   if (selectedPiece) {
-    const square = ARENA.flatSquareByTile.get(selectedPiece.tileId);
     selectedReadout.replaceChildren();
     const label = document.createElement("strong");
     label.textContent = capitalize(selectedPiece.type);
     const count = new Set(selectedMoves.map((move) => move.toTileId)).size;
-    selectedReadout.append(label, document.createTextNode(`${square ? ` · ${square.toUpperCase()}` : ` · ${selectedPiece.tileId}`}\n${count} legal destination${count === 1 ? "" : "s"}`));
+    selectedReadout.append(label, document.createTextNode(` · ${tileName(selectedPiece.tileId)}\n${count} legal destination${count === 1 ? "" : "s"}`));
     selectedReadout.hidden = false;
   } else {
     selectedReadout.hidden = true;
@@ -669,6 +668,8 @@ function render(): void {
 
 function renderMoveChoices(state: GameState, selected: Piece | null, moves: ReturnType<typeof getLegalMoves>): void {
   const choices = element<HTMLDivElement>("piece-choices"), destinations = element<HTMLDivElement>("destination-choices");
+  const destinationCount = new Set(moves.map((move) => move.toTileId)).size;
+  element<HTMLElement>("legal-moves-count").textContent = selected ? `${destinationCount} available` : "Select a piece";
   choices.replaceChildren(); destinations.replaceChildren();
   for (const piece of state.pieces.filter((candidate) => candidate.side === state.activePlayer && !isShadow(candidate, state.mode))) {
     const button = document.createElement("button");
@@ -686,8 +687,18 @@ function renderMoveChoices(state: GameState, selected: Piece | null, moves: Retu
   for (const tileId of new Set(moves.map((move) => move.toTileId))) {
     const button = document.createElement("button");
     button.type = "button";
-    const capture = state.pieces.find((piece) => piece.tileId === tileId);
+    const move = moves.find((candidate) => candidate.toTileId === tileId)!;
+    const capture = capturedPieceForMove(state, selected, move);
     button.textContent = `${capture ? "Capture" : "To"} ${tileName(tileId)}`;
+    if (capture) {
+      button.classList.add("capture-destination");
+      button.setAttribute("aria-label", `Capture ${capture.side} ${capture.type} at ${tileName(tileId)}`);
+      const badge = document.createElement("span");
+      badge.className = "capture-badge";
+      badge.setAttribute("aria-hidden", "true");
+      badge.textContent = "!";
+      button.append(badge);
+    }
     if (!ARENA.flatSquareByTile.has(tileId)) {
       button.classList.add("curved-only-destination");
       const badge = document.createElement("span");
@@ -844,7 +855,7 @@ function renderHistory(history: HistoryItem[]): void {
     return;
   }
   container.innerHTML = history.slice().reverse().map((item) => `
-    <div class="history-row"><span class="history-index">${String(item.ply).padStart(2, "0")}</span><span class="history-side ${item.actor}">${item.actor === "white" ? "W" : "B"}</span><span class="history-note">${escapeHtml(item.notation)}</span></div>
+    <div class="history-row"><span class="history-index">${String(item.ply).padStart(2, "0")}</span><span class="history-side ${item.actor}">${item.actor === "white" ? "W" : "B"}</span><span class="history-note">${escapeHtml(historyNote(item))}</span></div>
   `).join("");
 }
 

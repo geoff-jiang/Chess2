@@ -149,8 +149,11 @@ function applyShift(state: GameState, action: Extract<GameAction, { kind: "shift
 }
 
 function recordAction(state: GameState, action: GameAction, pieces: Piece[], notation: string, captured?: Piece): GameState {
+  const movingPiece = action.kind === "move" ? state.pieces.find((piece) => piece.id === action.pieceId) : undefined;
   return { ...state, pieces, activePlayer: oppositeSide(state.activePlayer), history: [...state.history, {
-    ply: state.history.length + 1, actor: state.activePlayer, action: { ...action }, notation, ...(captured ? { captured: { ...captured } } : {}),
+    ply: state.history.length + 1, actor: state.activePlayer, action: { ...action }, notation,
+    ...(movingPiece ? { fromTileId: movingPiece.tileId, pieceType: movingPiece.type } : {}),
+    ...(captured ? { captured: { ...captured } } : {}),
   }], repetitions: { ...state.repetitions } };
 }
 

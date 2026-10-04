@@ -110,6 +110,8 @@ test("curved captures and pawn heading survive a JSON reconnect", () => {
   const option = getLegalMoves(state, pawn.id).find((move) => move.toTileId === enemy.tileId)!;
   const next = applyAction(state, { kind: "move", pieceId: pawn.id, toTileId: option.toTileId });
   assert.ok(!next.pieces.some((piece) => piece.id === enemy.id));
+  assert.equal(next.history.at(-1)?.fromTileId, pawn.tileId);
+  assert.equal(next.history.at(-1)?.pieceType, "pawn");
   const resumed = JSON.parse(JSON.stringify(next));
   validatePosition(resumed);
   assert.equal(resumed.pieces.find((piece: Piece) => piece.id === pawn.id).forwardEdge, next.pieces.find((piece) => piece.id === pawn.id)!.forwardEdge);
