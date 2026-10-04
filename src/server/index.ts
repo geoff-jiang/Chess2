@@ -5,7 +5,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
-import { applyAction, createInitialState, oppositeSide, RuleViolation, type GameAction, type GameState, type Side } from "../shared/game.ts";
+import { applyAction, createInitialState, oppositeSide, RuleViolation, type GameAction, type GameState, type Side, type Ruleset, type Promotion } from "../shared/game.ts";
+import { PROMOTIONS } from "../shared/standard-chess.ts";
 
 interface Seat {
   token: string;
@@ -30,6 +31,7 @@ interface ClientMessage {
   code?: string;
   token?: string;
   action?: GameAction;
+  ruleset?: Ruleset;
 }
 
 interface ServerOptions {
@@ -130,7 +132,7 @@ function handleMessage(
         white: { token: generateSeatToken(), reserved: true },
         black: { token: generateSeatToken(), reserved: false },
       },
-      state: createInitialState(),
+      state: createInitialState(undefined, message.ruleset),
       rematchVotes: new Set(),
     };
     rooms.set(code, room);
@@ -183,7 +185,11 @@ function handleMessage(
   const { room, side } = assignment;
 
   if (message.type === "action") {
-    if (room.state.activePlayer !== side) {
+    if (message.action?.kind === "resign" && message.action.side !== side) {
+      sendError(socket, "not-your-seat", "You can only resign your own seat.");
+      return;
+    }
+    if (message.action?.kind !== "resign" && room.state.activePlayer !== side) {
       sendError(socket, "not-your-turn", "Wait for the other player to finish their turn.");
       return;
     }
@@ -205,7 +211,7 @@ function handleMessage(
     }
     room.rematchVotes.add(side);
     if (room.rematchVotes.size === 2) {
-      room.state = createInitialState();
+      room.state = createInitialState(undefined, room.state.ruleset);
       room.rematchVotes.clear();
     }
     broadcast(room);
@@ -244,7 +250,10 @@ function broadcast(room: Room): void {
 function parseMessage(raw: string): ClientMessage {
   const value: unknown = JSON.parse(raw);
   if (!isRecord(value) || typeof value.type !== "string") throw new Error("Invalid message");
-  if (value.type === "create") return { type: "create" };
+  if (value.type === "create") {
+    if (value.ruleset !== undefined && value.ruleset !== "standard" && value.ruleset !== "curvature") throw new Error("Invalid ruleset");
+    return { type: "create", ruleset: value.ruleset === "standard" ? "standard" : "curvature" };
+  }
   if (value.type === "join") {
     if (typeof value.code !== "string" || value.code.length > 12) throw new Error("Invalid room code");
     if (value.token !== undefined && (typeof value.token !== "string" || value.token.length > 128)) throw new Error("Invalid token");
@@ -253,10 +262,15 @@ function parseMessage(raw: string): ClientMessage {
   if (value.type === "action") {
     if (!isRecord(value.action)) throw new Error("Invalid action");
     if (value.action.kind === "move" && typeof value.action.pieceId === "string" && typeof value.action.toTileId === "string") {
-      return { type: "action", action: { kind: "move", pieceId: value.action.pieceId, toTileId: value.action.toTileId } };
+      const promotion = value.action.promotion;
+      if (promotion !== undefined && !PROMOTIONS.some((type) => type === promotion)) throw new Error("Invalid promotion");
+      return { type: "action", action: { kind: "move", pieceId: value.action.pieceId, toTileId: value.action.toTileId, ...(promotion ? { promotion: promotion as Promotion } : {}) } };
     }
     if (value.action.kind === "shift" && (value.action.toMode === "flat" || value.action.toMode === "hyperbolic")) {
       return { type: "action", action: { kind: "shift", toMode: value.action.toMode } };
+    }
+    if (value.action.kind === "resign" && (value.action.side === "white" || value.action.side === "black")) {
+      return { type: "action", action: { kind: "resign", side: value.action.side } };
     }
     throw new Error("Invalid action");
   }
@@ -330,7 +344,7 @@ function startServer(): void {
   const server = createGameServer();
   const port = Number(process.env.PORT ?? 8787);
   server.httpServer.listen(port, "0.0.0.0", () => {
-    process.stdout.write(`Curvature Chess listening on http://localhost:${port}\n`);
+    process.stdout.write(`Chess Without Borders listening on http://localhost:${port}\n`);
   });
 }
 

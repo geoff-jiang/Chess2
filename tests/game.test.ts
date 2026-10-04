@@ -1,169 +1,156 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createInitialState, getLegalMoves, applyAction, isInCheck, isShadow, type GameState, type Piece, type Side } from "../src/shared/game.ts";
-import { ARENA, rookRay } from "../src/shared/geometry.ts";
+import { Chess } from "chess.js";
+import { applyAction, canShift, createInitialState, createStateFromFen, getLegalMoves, isInCheck, positionKey, validatePosition, RuleViolation, type GameState, type Promotion } from "../src/shared/game.ts";
 
-test("the opening force is mirrored, with no immediate king capture", () => {
+test("resignation ends the match for either side without changing the board", () => {
   const state = createInitialState();
-  assert.equal(state.pieces.length, 8);
-  assert.equal(state.pieces.filter((piece) => piece.type === "king").length, 2);
-  assert.equal(state.status.kind, "playing");
-  assert.ok(state.pieces.every((piece) => ARENA.flatSquareByTile.has(piece.tileId)));
-  assert.equal(isInCheck(state, "white"), false);
-  assert.equal(isInCheck(state, "black"), false);
+  const finished = applyAction(state, { kind: "resign", side: "black" });
+  assert.deepEqual(finished.status, { kind: "won", winner: "white", reason: "resignation" });
+  assert.equal(finished.activePlayer, "white");
+  assert.deepEqual(finished.pieces, state.pieces);
+  assert.equal(finished.history.at(-1)?.notation, "Black resigns");
+  assert.throws(() => applyAction(finished, { kind: "resign", side: "white" }), /already finished/);
+});
+import { ARENA, type SquareId } from "../src/shared/geometry.ts";
 
-  for (const piece of state.pieces.filter((piece) => piece.side === "white")) {
-    const opposite = ARENA.oppositeTile.get(piece.tileId);
-    assert.ok(state.pieces.some((other) => other.side === "black" && other.type === piece.type && other.tileId === opposite));
+function tile(square: string): string { return ARENA.anchors.get(square as SquareId)!; }
+function move(state: GameState, from: string, to: string, promotion?: Promotion): GameState {
+  const piece = state.pieces.find((candidate) => candidate.tileId === tile(from));
+  assert.ok(piece, `No piece on ${from}`);
+  return applyAction(state, { kind: "move", pieceId: piece.id, toTileId: tile(to), ...(promotion ? { promotion } : {}) });
+}
+function destinations(state: GameState, square: string): string[] {
+  return getLegalMoves(state, state.pieces.find((piece) => piece.tileId === tile(square))!.id).map((option) => ARENA.flatSquareByTile.get(option.toTileId)!);
+}
+
+test("full opening has 32 pieces on orthodox squares and 20 piece moves", () => {
+  const state = createInitialState();
+  assert.equal(state.ruleset, "curvature");
+  assert.equal(state.pieces.length, 32);
+  for (const side of ["white", "black"]) {
+    for (const [type, count] of [["pawn", 8], ["rook", 2], ["knight", 2], ["bishop", 2], ["queen", 1], ["king", 1]]) assert.equal(state.pieces.filter((piece) => piece.side === side && piece.type === type).length, count);
   }
-  const hyperbolic = { ...state, mode: "hyperbolic" as const };
-  for (const side of ["white", "black"] as const) {
-    const turn = { ...hyperbolic, activePlayer: side };
-    assert.ok(turn.pieces.filter((piece) => piece.side === side).every((piece) =>
-      getLegalMoves(turn, piece.id).every((move) => !turn.pieces.some((target) => target.tileId === move.toTileId && target.side !== side)),
-    ));
+  assert.equal(state.pieces.find((piece) => piece.tileId === tile("e8"))!.type, "king");
+  assert.equal(state.pieces.find((piece) => piece.tileId === tile("d1"))!.type, "queen");
+  assert.equal(state.pieces.reduce((count, piece) => count + getLegalMoves(state, piece.id).length, 0), 20);
+  validatePosition(state);
+});
+
+test("adapter opening perft matches the known standard depth-two count", () => {
+  const state = createInitialState(ARENA, "standard");
+  let count = 0;
+  for (const piece of state.pieces) for (const option of getLegalMoves(state, piece.id)) {
+    const next = applyAction(state, { kind: "move", pieceId: piece.id, toTileId: option.toTileId });
+    count += next.pieces.reduce((sum, candidate) => sum + getLegalMoves(next, candidate.id).length, 0);
   }
+  assert.equal(count, 400);
 });
 
-test("flat rooks stop before a friendly piece and can capture the first enemy", () => {
-  let state = stateWith([
-    piece("white-rook", "white", "rook", "a1", "flat"),
-    piece("white-guard", "white", "guard", "a3", "flat"),
-    piece("black-guard", "black", "guard", "a4", "flat"),
-  ]);
-  const destinations = destinationsFor(state, "white-rook");
-  assert.ok(destinations.has(tile("a2")));
-  assert.ok(!destinations.has(tile("a3")));
-  assert.ok(!destinations.has(tile("a4")));
-
-  state = stateWith([
-    piece("white-rook", "white", "rook", "a1", "flat"),
-    piece("black-guard", "black", "guard", "a4", "flat"),
-  ]);
-  assert.ok(destinationsFor(state, "white-rook").has(tile("a4")));
+test("pawn blockers, double steps, knight jumps, and immutable actions", () => {
+  const initial = createInitialState(ARENA, "standard"), saved = JSON.stringify(initial);
+  assert.deepEqual(destinations(initial, "e2").sort(), ["e3", "e4"]);
+  assert.deepEqual(destinations(initial, "b1").sort(), ["a3", "c3"]);
+  assert.deepEqual(destinations(initial, "a1"), []);
+  const next = move(initial, "e2", "e4");
+  assert.equal(JSON.stringify(initial), saved);
+  assert.equal(next.pieces.find((piece) => piece.tileId === tile("e4"))!.id, "white-pawn-e2");
+  assert.throws(() => move(initial, "a1", "a4"), (error) => error instanceof RuleViolation && error.code === "illegal-move");
+  assert.throws(() => move(initial, "a7", "a6"), /Wait for your turn/);
 });
 
-test("hyperbolic knights jump over occupied tiles and turn to either side", () => {
-  const source = ARENA.centerTileId;
-  const firstLink = ARENA.tiles.get(source)!.neighbors[0]!;
-  const first = ARENA.tiles.get(firstLink.tileId)!;
-  const straightEdge = (firstLink.edgeIndex + 2) % 4;
-  const secondLink = first.neighbors[straightEdge]!;
-  const second = ARENA.tiles.get(secondLink.tileId)!;
-  const forwardEdge = (secondLink.edgeIndex + 2) % 4;
-  const sideLinks = [(forwardEdge + 1) % 4, (forwardEdge + 3) % 4].map((edge) => second.neighbors[edge]!);
-  const state = stateWith([
-    piece("white-knight", "white", "knight", source, "hyperbolic"),
-    piece("white-guard", "white", "guard", first.id, "hyperbolic"),
-  ], "hyperbolic");
-  const moves = getLegalMoves(state, "white-knight");
-  assert.ok(sideLinks.every((link) => moves.some((move) => move.toTileId === link.tileId)));
-  assert.equal(moves.length, 8);
-  assert.ok(moves.every((move) => move.route.length === 4));
+test("pins, king adjacency, and check enforce king safety", () => {
+  const pinned = createStateFromFen("k3r3/8/8/8/8/8/4R3/4K3 w - - 0 1", ARENA, "standard");
+  assert.ok(!destinations(pinned, "e2").includes("f2"));
+  assert.throws(() => move(pinned, "e2", "f2"), /king safety/);
+  const checked = createStateFromFen("k3r3/8/8/8/8/8/8/4K3 w - - 0 1", ARENA, "standard");
+  assert.equal(isInCheck(checked, "white"), true);
+  assert.ok(!destinations(checked, "e1").includes("e2"));
+  assert.throws(() => createStateFromFen("8/8/8/8/8/8/4k3/4K3 w - - 0 1"), /king in check/);
 });
 
-test("an extra-tile piece becomes a shadow, then returns to the same tile", () => {
-  const extraTile = [...ARENA.tiles.keys()].find((id) => !ARENA.flatSquareByTile.has(id));
-  assert.ok(extraTile);
-  let state = stateWith([
-    piece("white-king", "white", "king", tile("e1"), "flat"),
-    piece("black-king", "black", "king", tile("d8"), "flat"),
-    piece("black-guard", "black", "guard", extraTile, "flat"),
-  ], "hyperbolic");
-  state = applyAction(state, { kind: "shift", toMode: "flat" });
-  assert.equal(state.shiftCooldown, 2);
-  assert.equal(isShadow(state.pieces.find((piece) => piece.id === "black-guard")!, state.mode), true);
-  assert.equal(getLegalMoves(state, "black-guard").length, 0);
-  assert.throws(() => applyAction(state, { kind: "shift", toMode: "hyperbolic" }), /Make 2 more piece moves/);
-  state = applyAction(state, { kind: "move", pieceId: "black-king", toTileId: tile("d7") });
-  state = applyAction(state, { kind: "move", pieceId: "white-king", toTileId: tile("e2") });
-  assert.equal(state.shiftCooldown, 0);
-  state = applyAction(state, { kind: "shift", toMode: "hyperbolic" });
-  const restored = state.pieces.find((piece) => piece.id === "black-guard")!;
-  assert.equal(restored.tileId, extraTile);
-  assert.equal(isShadow(restored, state.mode), false);
+test("castling moves both pieces, loses rights, and cannot cross attacked squares", () => {
+  const start = createStateFromFen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", ARENA, "standard");
+  assert.ok(destinations(start, "e1").includes("g1"));
+  assert.ok(destinations(start, "e1").includes("c1"));
+  const castle = move(start, "e1", "g1");
+  assert.equal(castle.pieces.find((piece) => piece.tileId === tile("f1"))!.id, "white-rook-h1");
+  assert.equal(castle.fen.split(" ")[2], "kq");
+  const attacked = createStateFromFen("4kr2/8/8/8/8/8/8/4K2R w K - 0 1", ARENA, "standard");
+  assert.ok(!destinations(attacked, "e1").includes("g1"));
+  let returned = move(start, "h1", "h2");
+  returned = move(returned, "a8", "a7");
+  returned = move(returned, "h2", "h1");
+  assert.ok(!returned.fen.split(" ")[2].includes("K"));
 });
 
-test("capturing a king ends the match immediately", () => {
-  const state = stateWith([
-    piece("white-rook", "white", "rook", tile("a1"), "flat"),
-    piece("black-king", "black", "king", tile("a4"), "flat"),
-  ]);
-  const finished = applyAction(state, { kind: "move", pieceId: "white-rook", toTileId: tile("a4") });
-  assert.deepEqual(finished.status, { kind: "won", winner: "white" });
-  assert.equal(finished.pieces.some((piece) => piece.id === "black-king"), false);
-  assert.match(finished.history.at(-1)!.notation, /A1 → A4 · captures King/);
+test("en passant removes the bypassed pawn, expires, and respects discovered check", () => {
+  let state = createInitialState(ARENA, "standard");
+  for (const [from, to] of [["e2", "e4"], ["a7", "a6"], ["e4", "e5"], ["d7", "d5"]]) state = move(state, from, to);
+  assert.ok(destinations(state, "e5").includes("d6"));
+  const captured = move(state, "e5", "d6");
+  assert.ok(!captured.pieces.some((piece) => piece.id === "black-pawn-d7"));
+  assert.equal(captured.history.at(-1)!.captured?.id, "black-pawn-d7");
+  const pinned = createStateFromFen("k3r3/8/8/3pP3/8/8/8/4K3 w - d6 0 1", ARENA, "standard");
+  assert.ok(!destinations(pinned, "e5").includes("d6"));
+  state = move(state, "g1", "f3"); state = move(state, "a6", "a5");
+  assert.ok(!destinations(state, "e5").includes("d6"));
 });
 
-test("the third occurrence of a full position is a draw", () => {
-  let state = createInitialState();
-  const cycle = [
-    { kind: "move" as const, pieceId: "white-knight", toTileId: tile("c3") },
-    { kind: "move" as const, pieceId: "black-knight", toTileId: tile("f6") },
-    { kind: "move" as const, pieceId: "white-knight", toTileId: tile("b1") },
-    { kind: "move" as const, pieceId: "black-knight", toTileId: tile("g8") },
-  ];
-  for (let repetition = 0; repetition < 2; repetition += 1) {
-    for (const action of cycle) state = applyAction(state, action);
+test("all four promotions require a choice and preserve piece identity", () => {
+  const state = createStateFromFen("7k/P7/8/8/8/8/8/4K3 w - - 0 1", ARENA, "standard");
+  assert.throws(() => move(state, "a7", "a8"), /Choose a queen/);
+  for (const promotion of ["queen", "rook", "bishop", "knight"] as const) {
+    const next = move(state, "a7", "a8", promotion);
+    assert.equal(next.pieces.find((piece) => piece.id === "white-pawn-a7")!.type, promotion);
   }
+  assert.throws(() => move(createInitialState(), "e2", "e4", "queen"), /not a promotion/);
+});
+
+test("standard checkmate, stalemate, insufficient material and fifty-move draws", () => {
+  let state = createInitialState(ARENA, "standard");
+  for (const [from, to] of [["f2", "f3"], ["e7", "e5"], ["g2", "g4"], ["d8", "h4"]]) state = move(state, from, to);
+  assert.deepEqual(state.status, { kind: "won", winner: "black", reason: "checkmate" });
+  assert.throws(() => move(state, "a2", "a3"), /already finished/);
+  assert.deepEqual(createStateFromFen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", ARENA, "standard").status, { kind: "draw", reason: "stalemate" });
+  assert.deepEqual(createStateFromFen("7k/8/6K1/8/8/8/8/8 w - - 0 1", ARENA, "standard").status, { kind: "draw", reason: "insufficient-material" });
+  assert.deepEqual(createStateFromFen("7k/8/6K1/8/8/8/8/R7 w - - 100 51", ARENA, "standard").status, { kind: "draw", reason: "fifty-move" });
+});
+
+test("repetition ignores piece IDs and clocks but includes castling and en passant", () => {
+  let state = createInitialState(ARENA, "standard");
+  const original = positionKey(state);
+  for (let repeat = 0; repeat < 2; repeat++) for (const [from, to] of [["g1", "f3"], ["g8", "f6"], ["f3", "g1"], ["f6", "g8"]]) state = move(state, from, to);
+  assert.equal(positionKey(state), original);
   assert.deepEqual(state.status, { kind: "draw", reason: "repetition" });
+  const changed = { ...state, fen: state.fen.replace("KQkq", "-") };
+  assert.notEqual(positionKey(state), positionKey(changed));
 });
 
-test("check reporting sees a rook ray without forbidding an escape move", () => {
-  const state = { ...stateWith([
-    piece("white-rook", "white", "rook", "e1", "flat"),
-    piece("black-king", "black", "king", "e8", "flat"),
-  ]), activePlayer: "black" as const };
-  assert.equal(stateInCheck(state, "black"), true);
-  assert.ok(destinationsFor(state, "black-king").size > 0);
+test("invalid positions and inconsistent serialized state are rejected without mutation", () => {
+  for (const fen of ["invalid", "8/8/8/8/8/8/8/4K3 w - - 0 1", "P6k/8/8/8/8/8/8/4K3 w - - 0 1", "4k3/8/8/8/8/8/8/4K3 w K - 0 1"]) assert.throws(() => createStateFromFen(fen), RuleViolation);
+  const state = createInitialState();
+  for (const invalid of [
+    { ...state, pieces: [...state.pieces, state.pieces[0]] },
+    { ...state, pieces: state.pieces.map((piece, index) => index === 0 ? { ...piece, tileId: "unknown" } : piece) },
+    { ...state, activePlayer: "black" as const },
+    { ...state, arenaVersion: 999 },
+  ]) assert.throws(() => validatePosition(invalid), RuleViolation);
 });
 
-test("hyperbolic rook routes use graph rays rather than screen distance", () => {
-  const source = ARENA.centerTileId;
-  const route = rookRay(ARENA, source, 1);
-  const state = stateWith([piece("white-rook", "white", "rook", source, "hyperbolic")], "hyperbolic");
-  const moves = getLegalMoves(state, "white-rook");
-  assert.ok(route.length > 2);
-  assert.deepEqual(
-    moves.filter((move) => move.route[0] === source && move.route.at(-1) === route[2])[0]?.route,
-    [source, ...route.slice(0, 3)],
-  );
+test("flat adapter agrees with chess.js through captures and reconnect serialization", () => {
+  let state = createInitialState(ARENA, "standard"), chess = new Chess();
+  for (const san of ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Bxc6", "dxc6", "O-O"]) {
+    const reference = chess.move(san);
+    state = move(state, reference.from, reference.to);
+    assert.equal(state.fen, chess.fen());
+    state = JSON.parse(JSON.stringify(state));
+    validatePosition(state);
+  }
 });
 
-test("hyperbolic kings may touch corners but may only land on anchors", () => {
-  const source = [...ARENA.anchors.values()].find((tileId) =>
-    [...(ARENA.touchNeighbors.get(tileId) ?? [])].some((neighbor) => !ARENA.flatSquareByTile.has(neighbor)),
-  );
-  assert.ok(source);
-  const state = stateWith([piece("white-king", "white", "king", source, "hyperbolic")], "hyperbolic");
-  const moves = getLegalMoves(state, "white-king");
-  assert.ok(moves.length > 0);
-  assert.ok(moves.every((move) => ARENA.flatSquareByTile.has(move.toTileId)));
+test("standard rules never permit geometry shifts", () => {
+  const state = createInitialState(ARENA, "standard");
+  assert.equal(canShift(state, "hyperbolic"), false);
+  assert.throws(() => applyAction(state, { kind: "shift", toMode: "hyperbolic" }), /only in Curvature/);
 });
-
-function tile(square: string): string {
-  const id = ARENA.anchors.get(square as `${string}${number}`);
-  assert.ok(id, `Expected ${square} to map to an anchor`);
-  return id;
-}
-
-function piece(id: string, side: Side, type: Piece["type"], squareOrTile: string, mode: GameState["mode"]): Piece {
-  return {
-    id,
-    side,
-    type,
-    tileId: ARENA.tiles.has(squareOrTile) ? squareOrTile : tile(squareOrTile),
-  };
-}
-
-function stateWith(pieces: Piece[], mode: GameState["mode"] = "flat"): GameState {
-  return { ...createInitialState(), pieces, mode, activePlayer: "white", shiftCooldown: 0, status: { kind: "playing" }, history: [], repetitions: {} };
-}
-
-function destinationsFor(state: GameState, pieceId: string): Set<string> {
-  return new Set(getLegalMoves(state, pieceId).map((move) => move.toTileId));
-}
-
-function stateInCheck(state: GameState, side: Side): boolean {
-  return isInCheck(state, side);
-}

@@ -11,7 +11,7 @@ export interface HyperbolicTile {
 }
 
 export interface Arena {
-  version: 1;
+  version: 2;
   tiles: Map<string, HyperbolicTile>;
   anchors: Map<SquareId, string>;
   flatSquareByTile: Map<string, SquareId>;
@@ -79,7 +79,7 @@ export function createArena(): Arena {
   const { anchors, flatSquareByTile } = buildAnchors(tiles, oppositeTile);
 
   return {
-    version: 1,
+    version: 2,
     tiles,
     anchors,
     flatSquareByTile,
@@ -275,7 +275,24 @@ function buildAnchors(
     const [square, oppositeSquare] = squarePairs[index];
     const pair = tilePairs[index];
     if (!pair) throw new Error("The four-ring patch has too few rotationally paired tiles");
-    const [firstTile, secondTile] = pair;
+    // Keep each army in one half of curved space rather than scattering it by traversal ID.
+    // A greedy projection match preserves broad files/ranks; half-turn pairing remains exact.
+    const desired = squareCoordinates(square);
+    const targetX = (desired.col - 3.5) / 4.5;
+    const targetY = (desired.row - 3.5) / 4.5;
+    let bestIndex = index, bestScore = Infinity;
+    for (let candidateIndex = index; candidateIndex < squarePairs.length; candidateIndex++) {
+      const candidate = tilePairs[candidateIndex];
+      const options = candidate.map((id) => tiles.get(id)!);
+      const first = options.find((tile) => (tile.center.y < -EPSILON || Math.abs(tile.center.y) <= EPSILON && tile.center.x < 0) === (targetY < 0))!;
+      const x = first.center.x / (first.center.z + 1), y = first.center.y / (first.center.z + 1);
+      const score = (x - targetX) ** 2 + (y - targetY) ** 2;
+      if (score < bestScore) { bestIndex = candidateIndex; bestScore = score; }
+    }
+    [tilePairs[index], tilePairs[bestIndex]] = [tilePairs[bestIndex], tilePairs[index]];
+    const options = tilePairs[index].map((id) => tiles.get(id)!);
+    const firstTile = options.find((tile) => (tile.center.y < -EPSILON || Math.abs(tile.center.y) <= EPSILON && tile.center.x < 0) === (targetY < 0))!.id;
+    const secondTile = oppositeTile.get(firstTile)!;
     anchors.set(square, firstTile);
     anchors.set(oppositeSquare, secondTile);
     flatSquareByTile.set(firstTile, square);

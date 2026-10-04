@@ -1,6 +1,6 @@
-# Curvature Chess
+# Chess Without Borders
 
-Curvature Chess is a two-player browser game on two linked boards: a familiar 8×8 grid and a finite patch of the regular hyperbolic `{4,5}` tiling.
+Chess Without Borders is a two-player browser game on two linked boards: a familiar 8×8 grid and a finite patch of the regular hyperbolic `{4,5}` tiling.
 
 ## Run it
 
@@ -22,34 +22,54 @@ Open the Vite URL printed by `npm run dev`. For a production build, `npm start` 
 ## Play
 
 - Create a private room and send the six-character code or copied invite link to one other player. A room reserves exactly two seats.
-- Choose **Try a local match on this device** to play both sides without a second browser.
-- Choose **Try the guided opening** to preview a geometry shift, commit it, then inspect and play a newly opened rook route.
-- Drag to orbit, right-drag to pan, and use the wheel or a pinch gesture to zoom. **Reset view** restores that browser's camera. Camera state is never sent to the server.
-- Select a piece to reveal its available destinations and routes. Select a destination to move.
+- Choose **Play locally on this device** to play both sides without a second browser.
+- Choose **Explore curved routes** to preview a geometry shift, commit it, and inspect newly opened routes.
+- Drag to orbit, right-drag to pan, and use the wheel or a pinch gesture to zoom. Press **R** to reset the camera, **W** to fit the whole board while keeping your viewing angle, or **F** to focus the selected piece. Camera state is never sent to the server.
+- In curved mode, selecting a piece recenters its neighborhood into a readable local view, including pieces at the outer edge. The camera controls only affect your view/projection.
+- Gold rings mark shared-tile moves, lavender double rings mark curved-only moves, and red rings mark captures. Hover or keyboard-focus a destination to trace one route at a time. Guide dots show crossed tiles; small route rings show intermediate landing tiles. A faded piece shows the arrival position, and a selected pawn has a forward arrow.
+- In curved mode, select a destination, inspect the explanation, then press **Move** to confirm. **Cancel** or Escape clears it. **Show entire route** frames a long route. Flat moves still complete when their destination is selected.
+- The board stays visible while the controls scroll independently, including on narrow screens.
 - Choose the other geometry to preview it locally. **Commit** spends the current turn and changes the shared board.
+- The **Playing on** badge names the live geometry even during a local preview. Selected pieces keep a blue marker while the board morphs. The theme button follows the system setting initially and remembers your choice.
 - A geometry shift starts a two-piece-move lock. After each player has made one piece move, another shift is available.
-- Capturing the other king wins. Three visits to the same full position draw. The finish panel offers a rematch; online, both players must request one.
+- Checkmate or resignation wins. Kings cannot be captured or left in check. A safe geometry shift counts as a possible escape in Curvature matches. Three visits to the same full position draw. The finish panel offers a rematch; online, both players must request one. **Back to menu** leaves the current view; in an online match, it disconnects without resigning and your reserved seat can be restored with its room link.
+- The piece/destination buttons support keyboard play. Pawn promotion asks you to choose queen, rook, bishop, or knight before committing the move.
+- **Local analysis position** accepts FEN for a local match and reports invalid positions. Leave it blank for the full opening.
 
 ## Rules in this version
 
-Each side begins with a king, rook, knight, and guard. The mirrored flat starting squares are White `e1`, `a1`, `b1`, `d2` and Black `d8`, `h8`, `g8`, `e7` respectively.
+Every match starts with the standard 32 pieces: eight pawns, two rooks, two knights, two bishops, a queen, and a king per side. White occupies ranks 1–2, Black ranks 7–8; queens start on d1/d8 and kings on e1/e8.
 
-In flat mode, only the 64 anchor tiles are active. Kings move one square in any direction, rooks move orthogonally, knights use the familiar two-plus-one jump, and guards move one orthogonal square. An extra-tile piece becomes a shadow: its original tile and piece are preserved, but it is hidden from the flat board and cannot move, capture, block, or be captured there.
+**Curvature chess is the default.** Flat mode uses standard legal chess moves, including pins and king safety, castling, en passant, pawn double steps, captures, and all four promotions. A shift spends a turn and must leave the mover's king safe. A shift can answer check if the destination geometry removes the attack. Returning to flat must also form a valid chess position with both kings on anchors. Castling and en passant are revoked on returning from curved space; shifts cannot restore those privileges.
 
-In hyperbolic mode, rooks follow tile-center rays and continue through the opposite edge of each square; their route stops at the first piece or arena boundary. Knights move two steps along one such ray, then one edge to either side, jumping over intervening pieces. Kings may land on anchor tiles sharing an edge or corner. Guards move to an edge-neighbor. Captures happen only on the destination tile.
+In curved mode:
 
-King threats are displayed, but a player may leave a king threatened; this first version has no checkmate, castling, en passant, pawns, bishops, or promotion. Capturing the king is the win condition.
+- Rooks follow opposite-edge rays, stopping at the first occupied tile or boundary.
+- Bishops follow alternating left/right edge turns, landing after each pair of steps. There are eight initial diagonal routes. Only landing tiles block the bishop; intermediate tiles are route guides. These are explicit combinatorial diagonals, not a claim about straight geodesics through tile centers.
+- Queens combine rook and bishop routes. Knights travel two straight edge steps and one sideways step, jumping intervening pieces.
+- Kings can move to any edge/corner neighbor, provided they do not enter check.
+- Pawns start facing the edge closest in hyperbolic distance to their opposing home-rank anchor. Their heading is transported across moves. They advance one empty edge tile and capture via a forward edge plus a sideways edge; intermediate pieces do not block diagonal capture. Pawns promote at an opposing home-rank anchor or at a forward boundary in the opponent's half. Double steps, castling, and en passant apply only in flat space.
+- Captures occur on the destination. Every piece move is filtered for king safety. The two-piece-move shift lock prevents instant geometry reversal.
+
+Extra-tile pieces become shadows in flat mode: they retain their positions and identities but cannot move, attack, block, or be captured until curved space returns. Kings cannot become shadows. A return that leaves an unpromoted pawn on a back rank is rejected. Repetition includes geometry, side to move, cooldown, piece placement, pawn headings, and flat special-move rights. Curvature games do not apply orthodox insufficient-material or fifty-move draws because shifts change attack topology and reset flat move clocks.
+
+Choose **Standard chess** for an orthodox match without shifts. It also detects stalemate, insufficient material, and the fifty-move draw. Repetition and fifty-move draws are adjudicated automatically rather than requiring a claim. This application does not implement tournament clocks, draw offers, or FIDE claim/arbiter procedures.
 
 ## Geometry and anchors
 
-The rules engine generates the arena by reflecting a regular hyperbolic square across its edges in the hyperboloid model. Breadth-first face traversal creates the central tile plus four rings: 109 tiles in total. Vertex coordinates build the corner-neighbor graph; rook routes use edge adjacency, not distances in the rendered scene. The 3D board compresses hyperboloid radial distance into a curved display surface so outer tiles remain readable. This visual projection does not change the rules or claim to preserve Euclidean distances.
+The rules engine generates the arena by reflecting a regular hyperbolic square across its edges in the hyperboloid model. Breadth-first face traversal creates the central tile plus four rings: 109 tiles in total. Vertex coordinates build the corner-neighbor graph; rook routes use edge adjacency, not distances in the rendered scene. The overview compresses hyperboloid radial distance into a shallow display surface. Selecting a piece applies a Lorentz boost that centers its tile before projection, giving every selected tile the same local scale as the central tile. This preserves intrinsic distances and the movement graph. Distant tiles remain compressed for context; the overview is for orientation and the local view is for play.
 
-The generated arena has 32 pairs of opposite noncentral tiles among the anchors. The 64 flat squares are paired by a half-turn and assigned to those tile pairs in deterministic ring and tile ID order. This uses the arena's stable generated IDs, avoiding floating-point angle sorting across server and browser runtimes. The map is versioned and identical for every match. It links two different game spaces; it does not preserve the square grid's distances or neighbors when the geometry changes.
+The 64 anchors use 32 opposite noncentral tile pairs. Version 2 uses a deterministic greedy projection match to keep the opening armies in opposing regions while retaining exact half-turn pairing. This preserves broad rank/file locality, not grid distances or all neighbors. Regression tests freeze selected mappings and verify that the full opening can shift without exposing either king. Version-1 matches are incompatible: restart the server and begin fresh matches when upgrading.
 
 ## Project layout
 
+See [the geometry and interaction review](docs/geometry-review.md) for diagnosed defects, implemented corrections, and the remaining gameplay design and visual acceptance work.
+
 - `src/shared/geometry.ts` builds the arena, edge graph, corner graph, and anchor map.
 - `src/shared/game.ts` owns the serializable match state, legal destinations, shifts, captures, threats, history, and repetition draws.
+- `src/shared/game-types.ts` defines shared protocol and rule types.
+- `src/shared/standard-chess.ts` adapts chess.js positions to stable piece identities and tile anchors, and validates imported FEN.
+- `src/shared/curvature-moves.ts` defines curved piece movement and pawn heading transport.
 - `src/server/index.ts` validates actions, assigns room seats, broadcasts snapshots, and restores a seat with its private reconnect token.
 - `src/view/board-view.ts` renders the board and pieces in Three.js, draws routes, picks tiles, and owns per-browser camera controls.
 - `src/main.ts` connects the lobby, game panel, local play, and WebSocket room protocol.

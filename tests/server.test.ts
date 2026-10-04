@@ -16,11 +16,13 @@ test("rooms reserve two seats, authorize turns, broadcast state, and restore a d
   try {
     const white = await openClient(url, clients);
     const whiteCreated = receive(white);
-    white.send(JSON.stringify({ type: "create" }));
+    white.send(JSON.stringify({ type: "create", ruleset: "standard" }));
     const whiteStart = snapshot(await whiteCreated);
     assert.equal(whiteStart.seat, "white");
     assert.equal(whiteStart.connections.white, true);
     assert.equal(whiteStart.connections.black, false);
+    assert.equal(whiteStart.state.pieces.length, 32);
+    assert.equal(whiteStart.state.ruleset, "standard");
 
     let black = await openClient(url, clients);
     const whiteJoined = receive(white);
@@ -41,7 +43,7 @@ test("rooms reserve two seats, authorize turns, broadcast state, and restore a d
     const outOfTurn = receive(black);
     black.send(JSON.stringify({
       type: "action",
-      action: { kind: "move", pieceId: "white-guard", toTileId: "h-000" },
+      action: { kind: "move", pieceId: "white-pawn-d2", toTileId: "h-000" },
     }));
     assert.equal(error(await outOfTurn).code, "not-your-turn");
 
@@ -49,7 +51,7 @@ test("rooms reserve two seats, authorize turns, broadcast state, and restore a d
     const blackMove = receive(black);
     white.send(JSON.stringify({
       type: "action",
-      action: { kind: "move", pieceId: "white-guard", toTileId: ARENA.anchors.get("d3") },
+      action: { kind: "move", pieceId: "white-pawn-a2", toTileId: ARENA.anchors.get("a3") },
     }));
     const [whiteAfterMoveMessage, blackAfterMoveMessage] = await Promise.all([whiteMove, blackMove]);
     const whiteAfterMove = snapshot(whiteAfterMoveMessage);
@@ -80,12 +82,19 @@ test("rooms reserve two seats, authorize turns, broadcast state, and restore a d
     assert.equal(blackResume.state.activePlayer, "black");
     assert.equal(blackResume.state.history.length, 1);
 
-    await playAction(black, "black-guard", ARENA.anchors.get("e6")!, white);
-    await playAction(white, "white-rook", ARENA.anchors.get("a8")!, black);
-    await playAction(black, "black-king", ARENA.anchors.get("c8")!, white);
-    const [whiteFinish, blackFinish] = await playAction(white, "white-rook", ARENA.anchors.get("c8")!, black);
-    assert.deepEqual(whiteFinish.state.status, { kind: "won", winner: "white" });
-    assert.deepEqual(blackFinish.state.status, { kind: "won", winner: "white" });
+    const badPromotion = receive(black);
+    black.send(JSON.stringify({ type: "action", action: { kind: "move", pieceId: "black-pawn-e7", toTileId: ARENA.anchors.get("e5"), promotion: "king" } }));
+    assert.equal(error(await badPromotion).code, "invalid-message");
+    const illegal = receive(black);
+    black.send(JSON.stringify({ type: "action", action: { kind: "move", pieceId: "black-rook-a8", toTileId: ARENA.anchors.get("a5") } }));
+    assert.equal(error(await illegal).code, "illegal-move");
+    await playAction(black, "black-pawn-e7", ARENA.anchors.get("e5")!, white);
+    await playAction(white, "white-pawn-f2", ARENA.anchors.get("f3")!, black);
+    await playAction(black, "black-pawn-a7", ARENA.anchors.get("a6")!, white);
+    await playAction(white, "white-pawn-g2", ARENA.anchors.get("g4")!, black);
+    const [whiteFinish, blackFinish] = await playAction(black, "black-queen-d8", ARENA.anchors.get("h4")!, white);
+    assert.deepEqual(whiteFinish.state.status, { kind: "won", winner: "black", reason: "checkmate" });
+    assert.deepEqual(blackFinish.state.status, { kind: "won", winner: "black", reason: "checkmate" });
 
     const whiteAsked = receive(white);
     const blackAsked = receive(black);
@@ -100,6 +109,37 @@ test("rooms reserve two seats, authorize turns, broadcast state, and restore a d
     const [whiteRematch, blackRematch] = await Promise.all([whiteReset, blackReset]);
     assert.equal(snapshot(whiteRematch).state.status.kind, "playing");
     assert.equal(snapshot(blackRematch).state.history.length, 0);
+  } finally {
+    for (const client of clients) client.terminate();
+    await game.close();
+  }
+});
+
+test("a player can resign outside their turn but cannot resign the other seat", async () => {
+  const game = createGameServer();
+  const clients: WebSocket[] = [];
+  await new Promise<void>((resolve) => game.httpServer.listen(0, "127.0.0.1", resolve));
+  const address = game.httpServer.address();
+  assert.ok(address && typeof address !== "string");
+  const url = `ws://127.0.0.1:${address.port}/socket`;
+  try {
+    const white = await openClient(url, clients);
+    const whiteCreated = receive(white);
+    white.send(JSON.stringify({ type: "create" }));
+    const room = snapshot(await whiteCreated);
+    const black = await openClient(url, clients);
+    const whiteJoined = receive(white), blackJoined = receive(black);
+    black.send(JSON.stringify({ type: "join", code: room.code }));
+    await Promise.all([whiteJoined, blackJoined]);
+
+    const spoof = receive(black);
+    black.send(JSON.stringify({ type: "action", action: { kind: "resign", side: "white" } }));
+    assert.equal(error(await spoof).code, "not-your-seat");
+
+    const whiteFinished = receive(white), blackFinished = receive(black);
+    black.send(JSON.stringify({ type: "action", action: { kind: "resign", side: "black" } }));
+    assert.deepEqual(snapshot(await whiteFinished).state.status, { kind: "won", winner: "white", reason: "resignation" });
+    assert.deepEqual(snapshot(await blackFinished).state.status, { kind: "won", winner: "white", reason: "resignation" });
   } finally {
     for (const client of clients) client.terminate();
     await game.close();
